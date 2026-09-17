@@ -5,6 +5,7 @@ services:
   - type: web
     name: osu-librarian-relay
     runtime: docker
+    plan: free
     rootDir: relay
     dockerfilePath: ./Dockerfile
     autoDeploy: true
