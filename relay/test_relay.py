@@ -138,9 +138,10 @@ class RelayCase(unittest.TestCase):
         req = urllib.request.Request(self._base() + "/pair", data=b"", method="POST",
                                      headers={"Origin": "http://localhost:8787"})
         with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read()
+            self.assertEqual(r.status, 200)
             self.assertEqual(r.headers.get("Access-Control-Allow-Origin"), "*")
-            self.assertIn("ticket", json.loads(r.read().decode()))
-        self.assertEqual(json.loads(body.decode()), {"ok": True})
+            self.assertIn("ticket", json.loads(body.decode()))
 
     def test_pair_callback_token_happy_path_one_time(self):
         code, pair = self._post_pair()
