@@ -49,6 +49,7 @@ function refresh(persist = true) {
     listView.render();
   }
   bulk.update(state.selection.size);
+  paintSelAll();
   const active = state.rows[state.activeIdx];
   renderDetail(active || null);
   if (persist) savePrefs(state.filters, state.selection);
@@ -171,8 +172,8 @@ function bindFilters() {
   bind("played", "played");
   bind("ranked", "ranked");
   bind("sort", "sort");
-  bind("smin", "smin", Number);
-  bind("smax", "smax", Number);
+  bindStars();
+  bindSelAll();
   document.querySelectorAll('input[name="view"]').forEach((r) => {
     r.checked = r.value === f.view;
     r.addEventListener("change", () => {
@@ -181,6 +182,54 @@ function bindFilters() {
       state.memoKey = "";
       refresh();
     });
+  });
+}
+
+function bindStars() {
+  const f = state.filters;
+  const minR = $("smin-r"), maxR = $("smax-r");
+  if (Number(f.smin) > 10) f.smin = 10;
+  minR.value = Math.min(10, Math.max(0, Number(f.smin) || 0));
+  maxR.value = Number(f.smax) >= 10 ? 10 : Math.min(10, Math.max(0, Number(f.smax) || 0));
+  if (parseFloat(minR.value) > parseFloat(maxR.value)) minR.value = maxR.value;
+  const paint = () => {
+    const lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
+    $("sval").textContent = `${lo} – ${hi >= 10 ? "∞" : hi}`;
+  };
+  paint();
+  const onInput = (ev) => {
+    let lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
+    if (lo > hi) {
+      if (ev.target === minR) { hi = lo; maxR.value = String(hi); }
+      else { lo = hi; minR.value = String(lo); }
+    }
+    f.smin = lo;
+    f.smax = hi >= 10 ? 99 : hi;
+    paint();
+    state.activeIdx = -1;
+    refresh();
+  };
+  minR.addEventListener("input", onInput);
+  maxR.addEventListener("input", onInput);
+}
+
+function paintSelAll() {
+  const box = $("sel-all"), label = $("list-meta-text");
+  if (!box || !label) return;
+  const vis = visibleIds();
+  const sel = vis.filter((id) => state.selection.has(id)).length;
+  label.textContent = `${vis.length} of ${state.maps.length} shown`;
+  box.checked = vis.length > 0 && sel === vis.length;
+  box.indeterminate = sel > 0 && sel < vis.length;
+}
+
+function bindSelAll() {
+  $("sel-all").addEventListener("click", () => {
+    const vis = visibleIds();
+    const all = vis.length > 0 && vis.every((id) => state.selection.has(id));
+    if (all) for (const id of vis) state.selection.delete(id);
+    else for (const id of vis) state.selection.add(id);
+    refresh();
   });
 }
 

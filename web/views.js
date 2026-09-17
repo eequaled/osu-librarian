@@ -106,8 +106,11 @@ export class ListView {
       frag.appendChild(el);
     }
     this.rowsEl.replaceChildren(frag);
-    const meta = document.getElementById("list-meta");
-    if (meta) meta.textContent = `${this.rows.length} rows`;
+    // #list-meta-text is owned by main.js paintSelAll(); don't clobber the checkbox.
+    if (!document.getElementById("list-meta-text")) {
+      const meta = document.getElementById("list-meta");
+      if (meta) meta.textContent = `${this.rows.length} rows`;
+    }
   }
 
   reveal(idx) {

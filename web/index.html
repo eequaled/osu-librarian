@@ -61,9 +61,7 @@
         <option value="played">played</option>
         <option value="unplayed">unplayed</option>
       </select>
-      <label title="min stars">★<input id="smin" type="number" min="0" max="99" step="0.5" value="0"></label>
-      <span>–</span>
-      <label title="max stars"><input id="smax" type="number" min="0" max="99" step="0.5" value="99"></label>
+      <span class="stars-label">★</span><div class="dual-range"><input id="smin-r" type="range" min="0" max="10" step="0.5" value="0" aria-label="min stars"><input id="smax-r" type="range" min="0" max="10" step="0.5" value="10" aria-label="max stars"></div><span id="sval">0 – ∞</span>
       <select id="ranked" aria-label="ranked status filter">
         <option value="all">any status</option>
         <option value="ranked">ranked</option>
@@ -73,7 +71,7 @@
         <option value="unknown">unknown</option>
       </select>
     </div>
-    <div id="list-meta" class="list-meta"></div>
+    <div id="list-meta" class="list-meta"><label class="sel-all"><input type="checkbox" id="sel-all"> <span id="list-meta-text"></span></label></div>
     <div id="list" class="list" tabindex="0" role="listbox" aria-label="beatmaps" aria-multiselectable="true">
       <div id="list-spacer"><div id="list-rows"></div></div>
     </div>
