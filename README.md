@@ -1,25 +1,35 @@
-# osu! Librarian — MVP
+# osu! Librarian
 
 Local library manager for **osu!stable** and **osu!lazer** with two switchable modes.
 
-## What it does (MVP)
+## Web app (recommended)
 
-- **Mode switch (settings):** `stable` | `lazer`
+```bash
+cp settings.example.json settings.json   # point songs_dir / lazer_dir at your install
+python3 main.py web --port 8787          # open http://127.0.0.1:8787
+```
+
+Press **scan** once, then browse: text search, played/unplayed, mode, ★ range,
+ranked status, 7 sort orders, **by mapset / by difficulty** toggle, checkboxes +
+shift-click ranges + `select filtered` / `invert`, detail pane, and
+`export…` (`.json` / `.txt` / stable `collection.db`).
+
+## What it does
+
+- **Mode switch:** `stable` | `lazer` buttons (server tracks the active mode;
+  `settings.json` holds the default + paths).
 - **Scans all downloaded songs:**
   - stable → `Songs/<set folder>/*.osu` + joins `osu!.db` (metadata, star rating, grades, last-played) + `scores.db` (local scores by MD5 → **played/unplayed**)
   - lazer → hashed `files/` store (`files/*/*/<sha256>` blobs that start with `osu file format`) + optional `client.realm` export (scores live in Realm, not in plain files)
-- **Played detection (local):** `played = (md5 in scores.db) OR (osu!.db grade != 0) OR (last_played > 0) OR (unplayed flag == False with scores)`. No scores + grade 0 + never played → **unplayed**.
-- **Account link (online check):** osu! API v2 OAuth → `GET /api/v2/beatmaps/{id}/scores/users/{user}/all` per difficulty. Marks online-played for maps with no local score (including maps you don't have locally if you feed a beatmap-id list).
-- **Filter + multiselect + view:**
-  - filters: text search, played (`all/played/unplayed`), mode (`osu/taiko/catch/mania`), star-rating range, ranked status
-  - view: **by mapset** (one row per song, expands to diffs) vs **by difficulty** (one row per diff — like osu! song-select grouping off)
-  - multiselect with checkboxes, select-all-filtered, invert, bulk export (txt/json/collection)
+- **Played detection (local):** `played = (md5 in scores.db) OR (osu!.db grade != 0) OR (last_played > 0)`. No scores + grade 0 + never played → **unplayed**.
+- **Account link (online check):** link button → osu! OAuth → `online check` marks
+  `played_online` for maps with no local score (see OAuth setup below).
 
-## Quick start (no deps)
+## Quick start (CLI, no deps)
 
 ```bash
 python3 main.py scan --mode stable --songs "/path/to/osu!/Songs" --db "/path/to/osu!/osu!.db" --scores "/path/to/osu!/scores.db" --out library.json
-python3 main.py report --in library.json --out report.html   # open report.html in browser: filters + checkboxes + mapset/difficulty toggle
+python3 main.py report --in library.json --out report.html   # static fallback: filters + checkboxes + mapset/difficulty toggle
 python3 main.py ui --in library.json                          # tkinter desktop UI (needs display)
 ```
 
@@ -29,12 +39,42 @@ Lazer:
 python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library.json
 ```
 
-Online check (needs a free osu! OAuth app: https://osu.ppy.sh/home/account/edit → OAuth):
+## OAuth setup (account link)
 
-```bash
-python3 main.py check-online --in library.json --client-id XXX --client-secret YYY --user-id YYY --out library.online.json
-# then: python3 main.py report --in library.online.json --out report.html
-```
+1. Register an app at <https://osu.ppy.sh/home/account/edit> (OAuth section),
+   callback `http://localhost:8080/callback` → note `client_id` + `client_secret`.
+2. Put them in `settings.json` → `api` (+ your numeric `user_id` is optional;
+   it is auto-detected on link).
+3. In the web app: **link account** → open authorize page → paste `?code=` → link.
+   CLI alternative: `python3 main.py auth --client-id … --client-secret … --save-token .token.json`,
+   then `python3 main.py check-online --in library.json --token …`.
+
+## Caching (why repeat visits are instant)
+
+1. **Scan cache** — `.cache/scan-<mode>.json` + manifest of per-file mtimes.
+   Rescans re-parse only new/changed files; db/score changes rejoin without
+   re-parsing; `played_online` survives rescans. `rescan all` (`fresh=1`) bypasses.
+2. **Online-score cache** — `.api_cache.json` entries `{played, at}` with a
+   **7-day TTL**, crash-safe (persisted every 20), ~0.4s between calls.
+3. **HTTP** — `/api/library` has an `ETag` covering file + content state
+   (played flags included), so the UI gets `304 Not Modified` when nothing changed.
+4. **Client** — debounced search, memoized filtering, prefs + selection in
+   `localStorage`, and a windowed list (only visible rows in the DOM).
+
+## API (for hackers)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/status` | mode, path checks, counts, cache + job + auth state |
+| GET | `/api/library` | `{version, maps}` + ETag → `304` |
+| POST | `/api/scan` | `{mode?, fresh?}` → `{job_id}` (background, incremental) |
+| POST | `/api/mode` | `{mode}` switch without scanning |
+| GET | `/api/jobs/:id` | `{state, done, total, error?}` |
+| GET | `/api/auth/url` | authorize URL from settings creds |
+| POST | `/api/auth/code` | `{code}` → token stored server-side (`0600`) |
+| GET | `/api/auth/status` | `{linked, user_id}` |
+| POST | `/api/online-check` | background bulk score check → `{job_id}` |
+| POST | `/api/export` | `{ids, format: json\|txt\|collection}` → download |
 
 Settings file `settings.json` stores mode + paths + api creds (see `settings.example.json`). The UI can switch modes without CLI flags.
 
@@ -59,18 +99,31 @@ Settings file `settings.json` stores mode + paths + api creds (see `settings.exa
 ## Layout
 
 ```
-main.py               CLI (scan / report / ui / check-online)
+main.py               CLI (scan / report / ui / web / auth / check-online)
 settings.example.json
 src/config.py         settings + OS path auto-detect
 src/osu_parser.py     .osu text parser (+ MD5, BPM/length approx)
 src/stable_db.py      osu!.db / scores.db binary readers
-src/stable_scanner.py stable join: Songs + osu!.db + scores.db
-src/lazer_scanner.py  lazer files/ scan + realm-export hook
+src/stable_scanner.py stable join: Songs + osu!.db + scores.db (+per-file parse/rejoin)
+src/lazer_scanner.py  lazer files/ scan + realm-export hook (+per-blob parse)
 src/library.py        model + filters + mapset/difficulty grouping + selection
-src/osu_api.py        OAuth + bulk online-played check (stdlib only)
-src/report.py         static HTML viewer (filters + checkboxes + toggle)
-src/app_tk.py         tkinter desktop UI (same filters)
-tests/                parser + filter + scanner smoke tests
+src/osu_api.py        OAuth + bulk online-played check with TTL cache (stdlib only)
+src/cache.py          incremental scan cache (fingerprint + manifest + ETag version)
+src/jobs.py           background job registry with progress
+src/server.py         local HTTP API + static frontend (stdlib only)
+src/export.py         selection exporters (json/txt/collection.db)
+src/report.py         static HTML fallback viewer
+src/app_tk.py         tkinter desktop UI
+web/                  no-build frontend (index.html, styles.css, api/store/views/auth/bulk/main.js)
+tests/                `python3 -m unittest discover -s tests` (python + node store checks)
+docs/webui-spec.md    build spec this app was implemented from
+```
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests   # 20 tests: parsers, filters, cache/TTL,
+                                        # jobs, API server, CLI, web e2e, store.js via node
 ```
 
 ## Next steps (post-MVP)

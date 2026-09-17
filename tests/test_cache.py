@@ -59,6 +59,11 @@ class CacheTests(unittest.TestCase):
         fp = {"files": {"a": [1, 2]}}
         self.assertNotEqual(cache.version_for(3, fp), cache.version_for(4, fp))
 
+    def test_version_tag_busts_played_changes(self):
+        fp = {"files": {"a": [1, 2]}}
+        self.assertNotEqual(cache.version_for(3, fp, "played=0"),
+                            cache.version_for(3, fp, "played=1"))
+
 
 class ApiCacheTests(unittest.TestCase):
     def test_plain_bool_counts_as_fresh(self):

@@ -50,6 +50,11 @@ def set_mode(mode: str) -> str:
     return mode
 
 
+def _version(rows: list[dict], fp: dict) -> str:
+    played = sum(1 for r in rows if r.get("played_local") or r.get("played_online"))
+    return cachemod.version_for(len(rows), fp, f"played={played}")
+
+
 def library_paths(s: Settings, mode: str) -> dict:
     s = s.resolved()
     if mode == "lazer":
@@ -384,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
         tok = _load_token()
         self._json(200, {
             "mode": mode, **ok, "counts": counts,
-            "scan": {"version": cachemod.version_for(len(rows), fp) if fp else "none",
+            "scan": {"version": _version(rows, fp) if fp else "none",
                      "cached": bool(rows)},
             "jobs": {"active": registry.active()},
             "auth": {"linked": bool(tok.get("access_token")),
@@ -393,7 +398,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _library(self):
         _keys, rows, fp = cachemod.load_scan(get_mode())
-        version = cachemod.version_for(len(rows), fp) if fp else "empty"
+        version = _version(rows, fp) if fp else "empty"
         if self.headers.get("If-None-Match") == f'"{version}"':
             self.send_response(304)
             self.end_headers()

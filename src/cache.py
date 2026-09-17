@@ -71,9 +71,12 @@ def diff_fingerprints(old: dict, new: dict) -> tuple[set, set, set, bool]:
     return unchanged, changed, deleted, dbs_changed
 
 
-def version_for(maps_count: int, fp: dict) -> str:
+def version_for(maps_count: int, fp: dict, tag: str = "") -> str:
+    """ETag for /api/library. tag covers row content (e.g. online-check flags)
+    so content changes bust the cache even when the file fingerprint matches."""
     h = hashlib.sha1()
     h.update(str(maps_count).encode())
+    h.update(tag.encode())
     h.update(json.dumps(fp, sort_keys=True).encode())
     return h.hexdigest()[:16]
 
