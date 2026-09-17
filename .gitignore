@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+settings.json
+library.json
+library.online.json
+report.html
+.api_cache.json
+.token*.json
+.opencode/

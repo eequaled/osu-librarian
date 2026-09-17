@@ -1,0 +1,15 @@
+{
+  "mode": "stable",
+  "stable_dir": "",
+  "songs_dir": "",
+  "osu_db": "",
+  "scores_db": "",
+  "lazer_dir": "",
+  "realm_export": "",
+  "api": {
+    "client_id": 0,
+    "client_secret": "",
+    "redirect_uri": "http://localhost:8080/callback",
+    "user_id": 0
+  }
+}
