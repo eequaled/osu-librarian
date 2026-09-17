@@ -341,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
             tok = _load_token()
             return self._json(200, {"linked": bool(tok.get("access_token")),
                                    "user_id": tok.get("user_id", 0)})
+        if path == "/api/detect":
+            from .detect import find_installs
+            return self._json(200, {"installs": [i.to_dict() for i in find_installs()]})
         return self._static(path)
 
     def do_POST(self):
@@ -368,6 +371,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"job_id": jid})
         if path == "/api/export":
             return self._export(body)
+        if path == "/api/use-install":
+            return self._use_install(body)
         return self._json(404, {"error": "not found"})
 
     # -- endpoints --
@@ -387,6 +392,7 @@ class Handler(BaseHTTPRequestHandler):
         counts = summarize(from_dict_list(rows)) if rows else {"diffs": 0, "sets": 0,
                                                                "played": 0, "unplayed": 0}
         tok = _load_token()
+        from .detect import find_installs
         self._json(200, {
             "mode": mode, **ok, "counts": counts,
             "scan": {"version": _version(rows, fp) if fp else "none",
@@ -394,6 +400,7 @@ class Handler(BaseHTTPRequestHandler):
             "jobs": {"active": registry.active()},
             "auth": {"linked": bool(tok.get("access_token")),
                      "user_id": tok.get("user_id", 0)},
+            "installs": [i.to_dict() for i in find_installs()],
         })
 
     def _library(self):
@@ -411,6 +418,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _use_install(self, body: dict):
+        """Adopt a detected install: persist paths to settings.json + switch mode."""
+        from .config import save_settings
+        kind, path = body.get("kind", ""), body.get("path", "")
+        if kind not in ("stable", "lazer") or not path or not os.path.isdir(path):
+            return self._json(400, {"error": "unknown install — pick one from /api/detect"})
+        s = load_settings()
+        if kind == "stable":
+            s.stable_dir, s.songs_dir, s.osu_db, s.scores_db = path, "", "", ""
+        else:
+            s.lazer_dir = path
+        s = s.resolved()
+        save_settings(s)
+        set_mode(kind)
+        return self._json(200, {"ok": True, "mode": kind,
+                               "paths": library_paths(s, kind)})
 
     def _auth_url(self):
         from .osu_api import authorize_url

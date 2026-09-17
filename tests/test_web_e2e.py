@@ -68,6 +68,21 @@ class WebE2ETests(unittest.TestCase):
             time.sleep(0.1)
         self.fail("job timed out")
 
+    def test_detect_and_use_install(self):
+        code, _, body = _req("GET", self.url("/api/detect"))
+        self.assertEqual(code, 200)
+        self.assertIn("installs", json.loads(body))
+
+        # the mock install root (contains Songs/) is a valid stable install
+        code, _, body = _req("POST", self.url("/api/use-install"),
+                             {"kind": "stable", "path": self.tmp.name})
+        self.assertEqual(code, 200, body)
+        self.assertEqual(json.loads(body)["mode"], "stable")
+
+        code, _, _ = _req("POST", self.url("/api/use-install"),
+                          {"kind": "stable", "path": "/no/such/dir"})
+        self.assertEqual(code, 400)
+
     def test_user_loop(self):
         # static app loads
         code, _, body = _req("GET", self.url("/"))
