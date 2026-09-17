@@ -13,6 +13,8 @@ class ApiSettings:
     client_secret: str = ""
     redirect_uri: str = "http://localhost:8787/api/auth/callback"
     user_id: int = 0
+    relay_url: str = ""
+    relay_client_id: int = 0
 
 
 @dataclass
@@ -96,6 +98,8 @@ def load_settings(path: str = "settings.json") -> Settings:
             client_secret=api.get("client_secret", ""),
             redirect_uri=api.get("redirect_uri", "http://localhost:8787/api/auth/callback"),
             user_id=int(api.get("user_id", 0) or 0),
+            relay_url=str(api.get("relay_url", "") or ""),
+            relay_client_id=int(api.get("relay_client_id", 0) or 0),
         ),
     )
     return s.resolved()
@@ -115,6 +119,8 @@ def save_settings(s: Settings, path: str = "settings.json") -> None:
             "client_secret": s.api.client_secret,
             "redirect_uri": s.api.redirect_uri,
             "user_id": s.api.user_id,
+            "relay_url": s.api.relay_url,
+            "relay_client_id": s.api.relay_client_id,
         },
     }
     with open(path, "w", encoding="utf-8") as f:

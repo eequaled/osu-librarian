@@ -91,18 +91,26 @@
 
 <dialog id="auth-dialog">
   <h3>Link osu! account</h3>
-  <p>Create a free OAuth app at <b>osu.ppy.sh → account settings → OAuth</b>,
-     then paste its credentials here and authorize.</p>
-  <p>
-    <label>Client ID <input id="auth-client-id" inputmode="numeric" autocomplete="off" placeholder="client id"></label>
-    <label>Client secret <input id="auth-client-secret" type="password" autocomplete="off" placeholder="client secret"></label>
-    <button id="auth-save">save</button>
-  </p>
-  <p>Application Callback URL — use this exact URL, and the same port as the app:<br>
-    <input id="auth-callback" readonly value="http://localhost:8787/api/auth/callback" size="44" aria-label="application callback URL">
-    <button id="auth-copy">copy</button>
-  </p>
-  <p><button id="auth-open">authorize on osu.ppy.sh</button></p>
+  <section id="auth-relay-section">
+    <p><b>Link with the Librarian app</b> — no setup needed. One click, approve on osu!, done.</p>
+    <p><button id="auth-relay-open">authorize with one click</button></p>
+    <p id="auth-relay-hint" class="hint"></p>
+  </section>
+  <details id="auth-advanced">
+    <summary>use my own OAuth app (advanced)</summary>
+    <p>Create a free OAuth app at <b>osu.ppy.sh → account settings → OAuth</b>,
+       then paste its credentials here and authorize.</p>
+    <p>
+      <label>Client ID <input id="auth-client-id" inputmode="numeric" autocomplete="off" placeholder="client id"></label>
+      <label>Client secret <input id="auth-client-secret" type="password" autocomplete="off" placeholder="client secret"></label>
+      <button id="auth-save">save</button>
+    </p>
+    <p>Application Callback URL — use this exact URL, and the same port as the app:<br>
+      <input id="auth-callback" readonly value="http://localhost:8787/api/auth/callback" size="44" aria-label="application callback URL">
+      <button id="auth-copy">copy</button>
+    </p>
+    <p><button id="auth-open">authorize on osu.ppy.sh</button></p>
+  </details>
   <p><button id="auth-close">close</button></p>
 </dialog>
 

@@ -8,9 +8,11 @@ Endpoints (see docs/webui-spec.md for the contract):
   GET  /api/jobs/:id
   GET  /api/auth/url
   POST /api/auth/code           {code} -> {ok, user_id}
-  GET  /api/auth/callback       ?code=... (&error=...) -> HTML (OAuth redirect, auto-links)
-  POST /api/auth/config         {client_id, client_secret} -> {ok:true}
-  GET  /api/auth/status         {linked, user_id, username, redirect_uri, configured}
+   GET  /api/auth/callback       ?code=... (&error=...) -> HTML (OAuth redirect, auto-links)
+   POST /api/auth/config         {client_id, client_secret} -> {ok:true}
+   GET  /api/auth/status         {linked, user_id, username, redirect_uri, configured,
+                                 relay: {url, client_id, available}}
+   GET  /api/auth/relay-return   ?ticket=.. -> HTML (one-click relay return, saves token)
   POST /api/online-check        {} -> {job_id}
   POST /api/export              {ids, format} -> file download
 """
@@ -21,9 +23,12 @@ import html
 import json
 import mimetypes
 import os
+import re
 import threading
 import time
 import urllib.parse
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import cache as cachemod
@@ -106,24 +111,15 @@ def valid_token(settings: Settings) -> str:
     return tok.get("access_token", "")
 
 
-def _finish_auth(code: str) -> tuple[bool, dict | str]:
-    """Exchange an OAuth code, persist the token, return (ok, payload_or_error).
+def _persist_token(tok: dict) -> tuple[bool, dict | str]:
+    """Stamp obtained_at, attach user identity via get_me, save (0600).
 
-    On success payload is {"user_id": int, "username": str}; on failure the
-    second element is a human-readable error string (never includes secrets).
-    Shared by POST /api/auth/code (CLI compat) and GET /api/auth/callback.
+    Returns (ok, payload_or_error); error strings never include secrets.
+    Shared by the manual code exchange and the relay one-click return.
     """
-    from .osu_api import exchange_code, get_me
-    if not code:
-        return False, "missing code"
-    s = load_settings()
-    try:
-        tok = exchange_code(s.api.client_id, s.api.client_secret,
-                            s.api.redirect_uri, code)
-    except Exception as e:
-        return False, f"exchange failed: {e}"
-    if not isinstance(tok, dict):
-        return False, "exchange failed: bad response"
+    from .osu_api import get_me
+    if not isinstance(tok, dict) or not tok.get("access_token"):
+        return False, "link failed: bad token response"
     tok["obtained_at"] = time.time()
     try:
         me = get_me(tok.get("access_token", ""))
@@ -138,6 +134,76 @@ def _finish_auth(code: str) -> tuple[bool, dict | str]:
     _save_token(tok)
     return True, {"user_id": tok.get("user_id", 0),
                   "username": tok.get("username", "")}
+
+
+def _finish_auth(code: str) -> tuple[bool, dict | str]:
+    """Exchange an OAuth code, persist the token, return (ok, payload_or_error).
+
+    On success payload is {"user_id": int, "username": str}; on failure the
+    second element is a human-readable error string (never includes secrets).
+    Shared by POST /api/auth/code (CLI compat) and GET /api/auth/callback.
+    """
+    from .osu_api import exchange_code
+    if not code:
+        return False, "missing code"
+    s = load_settings()
+    try:
+        tok = exchange_code(s.api.client_id, s.api.client_secret,
+                            s.api.redirect_uri, code)
+    except Exception as e:
+        return False, f"exchange failed: {e}"
+    if not isinstance(tok, dict):
+        return False, "exchange failed: bad response"
+    return _persist_token(tok)
+
+
+# Relay one-click linking (frontend-built authorize URL, no new endpoint):
+#   https://osu.ppy.sh/oauth/authorize?client_id=<RELAY_CLIENT_ID>
+#     &redirect_uri=<RELAY_URL>/auth/callback&response_type=code
+#     &scope=identify+public&state=<ticket>.<localport>
+# osu! redirects to the relay (GET /auth/callback); the relay then redirects
+# the browser to http://127.0.0.1:<localport>/api/auth/relay-return?ticket=
+# <ticket>, which fetches {relay_url}/token?ticket=.. server-side and saves it.
+_TICKET_RE = re.compile(r"^[0-9a-fA-F]{1,128}$")
+
+
+def _relay_settings() -> tuple[str, int]:
+    s = load_settings()
+    url = (s.api.relay_url or "").strip()
+    try:
+        cid = int(s.api.relay_client_id or 0)
+    except (TypeError, ValueError):
+        cid = 0
+    return url, cid
+
+
+def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
+    """One-time fetch of the relay-held token. Never includes secrets in errors."""
+    base = relay_url.rstrip("/")
+    url = f"{base}/token?ticket={urllib.parse.quote(ticket, safe='')}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            try:
+                body = json.loads(r.read().decode("utf-8") or "null")
+            except ValueError:
+                return False, "link failed: bad relay response"
+    except urllib.error.HTTPError as e:
+        try:
+            e.read()
+        except Exception:
+            pass
+        finally:
+            try:
+                e.close()
+            except Exception:
+                pass
+        return False, "link failed: link expired or already used"
+    except Exception:
+        return False, "link failed: linking service unreachable or link expired"
+    if not isinstance(body, dict) or not body.get("access_token"):
+        return False, "link failed: link expired or already used"
+    return True, body
 
 
 # ---- scans ----
@@ -421,11 +487,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/auth/status":
             tok = _load_token()
             s = load_settings()
+            relay_url = (s.api.relay_url or "").strip()
+            try:
+                relay_cid = int(s.api.relay_client_id or 0)
+            except (TypeError, ValueError):
+                relay_cid = 0
             return self._json(200, {"linked": bool(tok.get("access_token")),
                                    "user_id": tok.get("user_id", 0),
                                    "username": tok.get("username", ""),
                                    "redirect_uri": s.api.redirect_uri,
-                                   "configured": bool(s.api.client_id and s.api.client_secret)})
+                                   "configured": bool(s.api.client_id and s.api.client_secret),
+                                   "relay": {"url": relay_url,
+                                             "client_id": relay_cid,
+                                             "available": bool(relay_url and relay_cid)}})
+        if path == "/api/auth/relay-return":
+            return self._auth_relay_return(parsed.query)
         if path == "/api/detect":
             from .detect import find_installs
             return self._json(200, {"installs": [i.to_dict() for i in find_installs()]})
@@ -598,6 +674,43 @@ class Handler(BaseHTTPRequestHandler):
                 "<p>You can close this tab and return to osu! Librarian.</p>"
                 "</body></html>")
         return self._send_html(400, page)
+
+    def _auth_relay_return(self, query: str):
+        """Relay one-click return: ?ticket=.. -> fetch token, save, HTML page."""
+        qs = urllib.parse.parse_qs(query or "")
+        ticket = (qs.get("ticket", [""])[0] or "")
+
+        def _fail(reason: str):
+            page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                    "<title>Authorization failed</title></head><body>"
+                    "<h1>Authorization failed</h1>"
+                    f"<p>{html.escape(reason)}</p>"
+                    "<p>You can close this tab and return to osu! Librarian.</p>"
+                    "</body></html>")
+            return self._send_html(400, page)
+
+        if not ticket or not _TICKET_RE.match(ticket):
+            return _fail("invalid ticket")
+        relay_url, relay_cid = _relay_settings()
+        if not relay_url or not relay_cid:
+            return _fail("linking service not configured")
+        ok, tok_or_err = _fetch_relay_token(relay_url, ticket)
+        if not ok:
+            reason = tok_or_err if isinstance(tok_or_err, str) else "link failed"
+            return _fail(reason)
+        assert isinstance(tok_or_err, dict)
+        ok2, result = _persist_token(tok_or_err)
+        if not ok2:
+            reason = result if isinstance(result, str) else "link failed"
+            return _fail(reason)
+        assert isinstance(result, dict)
+        display = str(result.get("username") or result.get("user_id") or "")
+        page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                "<title>Account linked</title></head><body>"
+                f"<h1>Account linked as {html.escape(display)}</h1>"
+                "<p>Account linked. Close this tab and return to osu! Librarian.</p>"
+                "</body></html>")
+        return self._send_html(200, page)
 
     def _export(self, body: dict):
         from . import export as exportmod

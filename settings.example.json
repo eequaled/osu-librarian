@@ -10,6 +10,8 @@
     "client_id": 0,
     "client_secret": "",
     "redirect_uri": "http://localhost:8787/api/auth/callback",
-    "user_id": 0
+    "user_id": 0,
+    "relay_url": "",
+    "relay_client_id": 0
   }
 }
