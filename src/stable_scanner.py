@@ -74,9 +74,20 @@ def parse_stable_file(path: str, db_by_md5: dict, scores_by_md5: dict) -> Beatma
         bpm=p["bpm"], stars=0.0, length_ms=p["length_ms"],
         beatmap_id=p["beatmap_id"], ranked="unknown",
         played_local=False, folder=p["folder"], origin="stable",
+        bg=p.get("bg", ""),
     )
-    return apply_db_join(b, db_by_md5.get(md5) if md5 else None,
-                         scores_by_md5.get(md5, []) if md5 else [])
+    b = apply_db_join(b, db_by_md5.get(md5) if md5 else None,
+                      scores_by_md5.get(md5, []) if md5 else [])
+    if not b.stars:
+        # No osu!.db star rating: compute locally (no-op when rosu-pp-py absent).
+        try:
+            from .difficulty import stars_for_file
+            s = stars_for_file(path, b.mode)
+            if s:
+                b.stars = s
+        except Exception:
+            pass
+    return b
 
 
 def scan_stable(songs_dir: str = "", osu_db_path: str = "", scores_path: str = "") -> list[Beatmap]:

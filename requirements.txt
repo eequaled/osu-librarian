@@ -1,3 +1,3 @@
-# stdlib only for the MVP. Optional (post-MVP):
+# stdlib only for the core. Optional:
 # requests>=2.31   # nicer HTTP than urllib (osu! API)
-# rosu-pp-py>=2    # accurate star-rating calc without osu!.db
+rosu-pp-py>=4,<5  # optional: local star-rating fallback when osu!.db/realm lack SR
