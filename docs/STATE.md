@@ -44,6 +44,10 @@ from the store, osu! API v2 account link + bulk online played check.
   `relay_url`/`relay_client_id` shipped in settings, + relay callback URL
   registered on the osu! app. Local code + tests are done and verified
   (fake-relay e2e); only ops remains.
+- Relay Docker image validated locally (builds, /health + /pair OK). flyctl
+  installed at ~/.fly/bin (not on PATH). runs-on.dev checked: subdomain
+  registry only, NOT hosting — relay stays on Fly.io; claimed name usable as
+  vanity CNAME later if wanted.
 - Known open product question from user history: librarian unplayed (3535) vs
   lazer "by rank" unplayed (3025) — believed to be 510 online-only scores;
   online check after linking should confirm. Sidebar now splits local/online.
