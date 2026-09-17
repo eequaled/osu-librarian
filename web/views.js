@@ -121,7 +121,10 @@ export function renderDetail(target) {
     const m = target.map;
     const link = m.beatmap_id > 0
       ? `<a href="https://osu.ppy.sh/beatmaps/${m.beatmap_id}" target="_blank" rel="noopener">open on website</a>` : "";
-    el.innerHTML = `<h3>${escapeHtml(m.title)}</h3>` +
+    const art = m.id
+      ? `<img class="art" src="/api/art?id=${encodeURIComponent(m.id)}" alt="" onerror="this.remove()">`
+      : "";
+    el.innerHTML = art + `<h3>${escapeHtml(m.title)}</h3>` +
       `<p class="hint">${escapeHtml(m.artist)} · mapped by ${escapeHtml(m.creator)}</p>` +
       `<table>` +
       `<tr><td class="k">difficulty</td><td>${escapeHtml(m.diff)}</td></tr>` +
@@ -138,7 +141,11 @@ export function renderDetail(target) {
   const rows = s.maps.map((m) =>
     `<tr><td>${escapeHtml(m.diff)}</td><td>★${(m.stars || 0).toFixed(2)}</td>` +
     `<td>${isPlayed(m) ? "yes" : "no"}</td></tr>`).join("");
-  el.innerHTML = `<h3>${escapeHtml(s.title)}</h3>` +
+  const firstId = s.maps[0]?.id;
+  const art = firstId
+    ? `<img class="art" src="/api/art?id=${encodeURIComponent(firstId)}" alt="" onerror="this.remove()">`
+    : "";
+  el.innerHTML = art + `<h3>${escapeHtml(s.title)}</h3>` +
     `<p class="hint">${escapeHtml(s.artist)} · ${s.played}/${s.maps.length} played</p>` +
     `<table>${rows}</table>`;
 }

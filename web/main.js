@@ -157,7 +157,6 @@ function bindFilters() {
     });
   };
   bind("played", "played");
-  bind("fmode", "mode");
   bind("ranked", "ranked");
   bind("sort", "sort");
   bind("smin", "smin", Number);
@@ -199,6 +198,22 @@ function bindKeyboard() {
 }
 
 function bindTopbar() {
+  const paintRuleset = () => {
+    document.querySelectorAll(".ruleset button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.ruleset === state.filters.mode));
+    });
+  };
+  document.querySelectorAll(".ruleset button").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.filters.mode = b.dataset.ruleset;
+      state.activeIdx = -1;
+      paintRuleset();
+      refresh();
+    });
+  });
+  paintRuleset();
+  state.paintRuleset = paintRuleset;
+
   const paintMode = () => {
     $("mode-stable").classList.toggle("active", state.mode === "stable");
     $("mode-lazer").classList.toggle("active", state.mode === "lazer");

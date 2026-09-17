@@ -8,6 +8,13 @@
 </head>
 <body>
 <header class="topbar">
+  <div class="ruleset" role="group" aria-label="gamemode">
+    <button data-ruleset="all" aria-pressed="true">All</button>
+    <button data-ruleset="osu" aria-pressed="false">osu</button>
+    <button data-ruleset="taiko" aria-pressed="false">taiko</button>
+    <button data-ruleset="catch" aria-pressed="false">catch</button>
+    <button data-ruleset="mania" aria-pressed="false">mania</button>
+  </div>
   <div class="brand">osu! Librarian</div>
   <div class="mode-switch" role="group" aria-label="client mode">
     <button id="mode-stable" data-mode="stable">stable</button>
@@ -54,13 +61,6 @@
         <option value="all">all</option>
         <option value="played">played</option>
         <option value="unplayed">unplayed</option>
-      </select>
-      <select id="fmode" aria-label="mode filter">
-        <option value="all">all modes</option>
-        <option value="osu">osu</option>
-        <option value="taiko">taiko</option>
-        <option value="catch">catch</option>
-        <option value="mania">mania</option>
       </select>
       <label title="min stars">★<input id="smin" type="number" min="0" max="99" step="0.5" value="0"></label>
       <span>–</span>

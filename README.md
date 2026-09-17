@@ -11,8 +11,9 @@ python3 main.py web --port 8787          # open http://127.0.0.1:8787
 
 Press **scan** once, then browse: text search, played/unplayed, mode, ★ range,
 ranked status, 7 sort orders, **by mapset / by difficulty** toggle, checkboxes +
-shift-click ranges + `select filtered` / `invert`, detail pane, and
-`export…` (`.json` / `.txt` / stable `collection.db`).
+shift-click ranges + `select filtered` / `invert`, detail pane **with background
+preview**, top-bar **gamemode selector** (All/osu/taiko/catch/mania, like lazer),
+and `export…` (`.json` / `.txt` / stable `collection.db`).
 
 **No setup needed in most cases:** if your library is empty the app offers every
 osu! install it finds (stable `%localappdata%/osu!`, wine prefixes, Program
@@ -28,6 +29,12 @@ override stays available via `settings.json`.
 - **Scans all downloaded songs:**
   - stable → `Songs/<set folder>/*.osu` + joins `osu!.db` (metadata, star rating, grades, last-played) + `scores.db` (local scores by MD5 → **played/unplayed**)
   - lazer → hashed `files/` store (`files/*/*/<sha256>` blobs that start with `osu file format`) + optional `client.realm` export (scores live in Realm, not in plain files)
+  - lazer **Realm direct read (automatic):** on scan, the bundled helper
+    (`tools/realm_export`, needs node once for `npm install`) dumps
+    `client.realm` read-only to JSON — real star ratings, local played state +
+    grades, ranked status, date added, and background-art resolution. No node?
+    It silently falls back to blob-sniffing. Missing stars anywhere are
+    computed locally via optional `rosu-pp-py` (`pip install -r requirements.txt`).
 - **Played detection (local):** `played = (md5 in scores.db) OR (osu!.db grade != 0) OR (last_played > 0)`. No scores + grade 0 + never played → **unplayed**.
 - **Account link (online check):** link button → osu! OAuth → `online check` marks
   `played_online` for maps with no local score (see OAuth setup below).
