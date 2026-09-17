@@ -47,8 +47,9 @@ class CacheTests(unittest.TestCase):
             cwd = os.getcwd()
             os.chdir(td)
             try:
-                cache.save_scan("stable", [{"id": "x"}], {"files": {}})
-                rows, fp = cache.load_scan("stable")
+                cache.save_scan("stable", ["a.osu"], [{"id": "x"}], {"files": {}})
+                keys, rows, fp = cache.load_scan("stable")
+                self.assertEqual(keys, ["a.osu"])
                 self.assertEqual(rows, [{"id": "x"}])
                 self.assertEqual(fp, {"files": {}})
             finally:

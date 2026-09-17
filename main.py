@@ -105,6 +105,12 @@ def cmd_check_online(a) -> int:
     return 0
 
 
+def cmd_web(a) -> int:
+    from src.server import serve
+    serve(a.port)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="osu-librarian", description="osu! stable/lazer local library manager (MVP)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -136,8 +142,11 @@ def main() -> int:
     p.add_argument("--save-token", default="")
     p.set_defaults(fn=cmd_auth)
 
-    p = sub.add_parser("check-online", help="mark online-played via API v2")
-    p.add_argument("--in", dest="in_path", default="library.json")
+    p = sub.add_parser("web", help="serve the web UI + JSON API locally")
+    p.add_argument("--port", type=int, default=8787)
+    p.set_defaults(fn=cmd_web)
+
+    p = sub.add_parser("check-online", help="mark online-played via API v2")    p.add_argument("--in", dest="in_path", default="library.json")
     p.add_argument("--out", default="library.online.json")
     p.add_argument("--client-id", type=int, default=0)
     p.add_argument("--client-secret", default="")

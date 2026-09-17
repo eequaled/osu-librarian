@@ -78,25 +78,39 @@ def version_for(maps_count: int, fp: dict) -> str:
     return h.hexdigest()[:16]
 
 
-def load_scan(mode: str) -> tuple[list[dict], dict]:
+def load_scan(mode: str) -> tuple[list, list[dict], dict]:
+    """Returns (keys, rows, fingerprint). keys[i] is the file relpath for rows[i]
+    (None for db-only entries with no file on disk)."""
     scan_path, manifest_path = cache_paths(mode)
     try:
         with open(scan_path, encoding="utf-8") as f:
-            rows = json.load(f)
+            data = json.load(f)
     except (OSError, ValueError):
-        return [], {}
+        return [], [], {}
+    if isinstance(data, list):  # legacy bare-rows format
+        rows = data
+        keys = [None] * len(rows)
+    else:
+        rows = data.get("rows", [])
+        keys = data.get("keys", [None] * len(rows))
     try:
         with open(manifest_path, encoding="utf-8") as f:
             manifests = json.load(f)
     except (OSError, ValueError):
         manifests = {}
-    return rows, manifests.get(mode, {})
+    return keys, rows, manifests.get(mode, {})
 
 
-def save_scan(mode: str, rows: list[dict], fp: dict) -> None:
+def save_scan(mode: str, keys: list, rows: list[dict], fp: dict) -> None:
     scan_path, manifest_path = cache_paths(mode)
     with open(scan_path, "w", encoding="utf-8") as f:
-        json.dump(rows, f)
+        json.dump({"keys": keys, "rows": rows}, f)
+
+
+def save_scan(mode: str, keys: list, rows: list[dict], fp: dict) -> None:
+    scan_path, manifest_path = cache_paths(mode)
+    with open(scan_path, "w", encoding="utf-8") as f:
+        json.dump({"keys": keys, "rows": rows}, f)
     try:
         with open(manifest_path, encoding="utf-8") as f:
             manifests = json.load(f)

@@ -89,6 +89,12 @@ def user_has_scores(beatmap_id: int, user_id: int, token: str, ruleset: str = ""
     return None
 
 
+def get_me(token: str) -> dict:
+    """Authenticated user object ({} on failure). Used after OAuth code exchange."""
+    status, body = _get(f"{API_BASE}/me/", token)
+    return body if status == 200 and isinstance(body, dict) else {}
+
+
 def lookup_by_md5(md5: str, token: str) -> int:
     status, body = _get(f"{API_BASE}/beatmaps/lookup?checksum={md5}", token)
     if status == 200 and isinstance(body, dict):

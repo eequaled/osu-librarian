@@ -41,39 +41,42 @@ def load_score_map(scores_path: str) -> dict:
     return {}
 
 
+def apply_db_join(b: Beatmap, db, scores: list) -> Beatmap:
+    """Refresh db-derived fields (stars/grades/played) in place. No re-parse."""
+    from .stable_db import GRADE_NAMES, RANKED_NAMES
+    if db is not None:
+        b.ar, b.cs, b.hp, b.od = db.ar, db.cs, db.hp, db.od
+        b.stars = db.stars
+        b.ranked = RANKED_NAMES.get(db.ranked, "unknown")
+        g = db.grades[b.mode] if 0 <= b.mode < 4 else 0
+        b.grade = GRADE_NAMES.get(g, "")
+        b.last_played = db.last_played
+        b.played_local = _played_from_db(any(g for g in db.grades),
+                                         db.unplayed, db.last_played, len(scores))
+    else:
+        b.played_local = len(scores) > 0
+    b.score_count = len(scores)
+    return b
+
+
 def parse_stable_file(path: str, db_by_md5: dict, scores_by_md5: dict) -> Beatmap:
     """Parse one .osu file + join db rows. Keyed by file path for caching."""
-    from .stable_db import GRADE_NAMES
     p = parse_osu_file(path)
     md5 = (p["md5"] or "").lower()
-    db = db_by_md5.get(md5) if md5 else None
-    scores = scores_by_md5.get(md5, []) if md5 else []
-    grade_any = bool(db and any(g for g in db.grades))
-    played = _played_from_db(
-        grade_any, db.unplayed if db else True, db.last_played if db else 0,
-        len(scores),
-    )
-    grade = ""
-    if db:
-        g = db.grades[p["mode"]] if 0 <= p["mode"] < 4 else 0
-        grade = GRADE_NAMES.get(g, "")
-    stars = db.stars if db and db.stars else 0.0
-    ranked = RANKED_NAMES.get(db.ranked, "unknown") if db else "unknown"
     set_key = str(p["set_id"]) if p["set_id"] not in (-1, 0, None) else f"local:{p['folder']}"
-    return Beatmap(
+    b = Beatmap(
         id=md5 or path,
         set_id=set_key,
         artist=p["artist"], title=p["title"], creator=p["creator"],
         diff=p["version"], source=p["source"], tags=p["tags"],
         mode=p["mode"], mode_name=mode_name(p["mode"]),
-        ar=p["ar"] if not db else db.ar, cs=p["cs"] if not db else db.cs,
-        od=p["od"] if not db else db.od, hp=p["hp"] if not db else db.hp,
-        bpm=p["bpm"], stars=stars, length_ms=p["length_ms"],
-        beatmap_id=p["beatmap_id"], ranked=ranked,
-        played_local=played, grade=grade,
-        last_played=db.last_played if db else 0,
-        score_count=len(scores), folder=p["folder"], origin="stable",
+        ar=p["ar"], cs=p["cs"], od=p["od"], hp=p["hp"],
+        bpm=p["bpm"], stars=0.0, length_ms=p["length_ms"],
+        beatmap_id=p["beatmap_id"], ranked="unknown",
+        played_local=False, folder=p["folder"], origin="stable",
     )
+    return apply_db_join(b, db_by_md5.get(md5) if md5 else None,
+                         scores_by_md5.get(md5, []) if md5 else [])
 
 
 def scan_stable(songs_dir: str = "", osu_db_path: str = "", scores_path: str = "") -> list[Beatmap]:
