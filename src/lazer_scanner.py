@@ -13,7 +13,6 @@ library + unplayed workflow (everything defaults to unplayed locally).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 
@@ -121,6 +120,35 @@ def load_realm_export(path: str) -> dict:
     return {"played_ids": played_ids, "played_md5": played_md5, "stars": stars}
 
 
+def parse_lazer_blob(path: str, realm: dict | None = None) -> Beatmap:
+    """Parse one hashed .osu blob. Keyed by blob path for caching."""
+    import hashlib as _hashlib
+    realm = realm or {"played_ids": set(), "played_md5": set(), "stars": {}}
+    info = _parse_blob(path)
+    try:
+        with open(path, "rb") as f:
+            md5 = _hashlib.md5(f.read()).hexdigest()
+    except OSError:
+        md5 = path
+    bid = int(info.get("beatmap_id", -1) or -1)
+    played = (bid in realm["played_ids"]) or (md5.lower() in realm["played_md5"])
+    stars = realm["stars"].get(bid, 0.0) if bid != -1 else 0.0
+    set_key = str(info["set_id"]) if info["set_id"] not in (-1, 0, None) else f"hash:{os.path.basename(path)[:12]}"
+    return Beatmap(
+        id=md5, set_id=set_key,
+        artist=info["artist"], title=info["title"], creator=info["creator"],
+        diff=info["version"], source=info["source"], tags=info["tags"],
+        mode=int(info["mode"]), mode_name=mode_name(int(info["mode"])),
+        ar=float(info["ar"]), cs=float(info["cs"]),
+        od=float(info["od"]), hp=float(info["hp"]),
+        bpm=float(info["bpm"]), stars=float(stars),
+        length_ms=int(info["length_ms"]), beatmap_id=bid,
+        ranked="unknown", played_local=played,
+        score_count=1 if played else 0,
+        folder=f"files/{os.path.basename(path)[:2]}/…", origin="lazer",
+    )
+
+
 def scan_lazer(lazer_dir: str = "", realm_export: str = "") -> list[Beatmap]:
     files_dir = os.path.join(lazer_dir, "files") if lazer_dir else ""
     blobs: list[str] = []
@@ -152,27 +180,5 @@ def scan_lazer(lazer_dir: str = "", realm_export: str = "") -> list[Beatmap]:
 
     out: list[Beatmap] = []
     for path in sorted(blobs):
-        info = _parse_blob(path)
-        try:
-            with open(path, "rb") as f:
-                md5 = hashlib.md5(f.read()).hexdigest()
-        except OSError:
-            md5 = path
-        bid = int(info.get("beatmap_id", -1) or -1)
-        played = (bid in realm["played_ids"]) or (md5.lower() in realm["played_md5"])
-        stars = realm["stars"].get(bid, 0.0) if bid != -1 else 0.0
-        set_key = str(info["set_id"]) if info["set_id"] not in (-1, 0, None) else f"hash:{os.path.basename(path)[:12]}"
-        out.append(Beatmap(
-            id=md5, set_id=set_key,
-            artist=info["artist"], title=info["title"], creator=info["creator"],
-            diff=info["version"], source=info["source"], tags=info["tags"],
-            mode=int(info["mode"]), mode_name=mode_name(int(info["mode"])),
-            ar=float(info["ar"]), cs=float(info["cs"]),
-            od=float(info["od"]), hp=float(info["hp"]),
-            bpm=float(info["bpm"]), stars=float(stars),
-            length_ms=int(info["length_ms"]), beatmap_id=bid,
-            ranked="unknown", played_local=played,
-            score_count=1 if played else 0,
-            folder=f"files/{os.path.basename(path)[:2]}/…", origin="lazer",
-        ))
+        out.append(parse_lazer_blob(path, realm))
     return out

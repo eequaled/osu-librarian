@@ -19,23 +19,66 @@ def _played_from_db(db_grade_any: bool, unplayed: bool, last_played: int, n_scor
     return False
 
 
-def scan_stable(songs_dir: str = "", osu_db_path: str = "", scores_path: str = "") -> list[Beatmap]:
-    db_by_md5: dict = {}
-    db_meta = {}
+def load_db_maps(osu_db_path: str) -> dict:
+    """osu!.db MD5 -> row (empty dict when missing/unreadable)."""
     if osu_db_path and os.path.exists(osu_db_path):
         try:
-            db_meta, maps = read_osu_db(osu_db_path)
-            for m in maps:
-                db_by_md5[m.md5.lower()] = m
+            _, maps = read_osu_db(osu_db_path)
+            return {m.md5.lower(): m for m in maps}
         except Exception as e:
             print(f"[warn] could not read osu!.db ({e}); falling back to .osu only")
-    scores_by_md5: dict = {}
+    return {}
+
+
+def load_score_map(scores_path: str) -> dict:
+    """scores.db MD5 -> [scores] (empty dict when missing/unreadable)."""
     if scores_path and os.path.exists(scores_path):
         try:
-            _, scores_by_md5 = read_scores_db(scores_path)
-            scores_by_md5 = {k.lower(): v for k, v in scores_by_md5.items()}
+            _, by_md5 = read_scores_db(scores_path)
+            return {k.lower(): v for k, v in by_md5.items()}
         except Exception as e:
             print(f"[warn] could not read scores.db ({e}); played flags come from osu!.db only")
+    return {}
+
+
+def parse_stable_file(path: str, db_by_md5: dict, scores_by_md5: dict) -> Beatmap:
+    """Parse one .osu file + join db rows. Keyed by file path for caching."""
+    from .stable_db import GRADE_NAMES
+    p = parse_osu_file(path)
+    md5 = (p["md5"] or "").lower()
+    db = db_by_md5.get(md5) if md5 else None
+    scores = scores_by_md5.get(md5, []) if md5 else []
+    grade_any = bool(db and any(g for g in db.grades))
+    played = _played_from_db(
+        grade_any, db.unplayed if db else True, db.last_played if db else 0,
+        len(scores),
+    )
+    grade = ""
+    if db:
+        g = db.grades[p["mode"]] if 0 <= p["mode"] < 4 else 0
+        grade = GRADE_NAMES.get(g, "")
+    stars = db.stars if db and db.stars else 0.0
+    ranked = RANKED_NAMES.get(db.ranked, "unknown") if db else "unknown"
+    set_key = str(p["set_id"]) if p["set_id"] not in (-1, 0, None) else f"local:{p['folder']}"
+    return Beatmap(
+        id=md5 or path,
+        set_id=set_key,
+        artist=p["artist"], title=p["title"], creator=p["creator"],
+        diff=p["version"], source=p["source"], tags=p["tags"],
+        mode=p["mode"], mode_name=mode_name(p["mode"]),
+        ar=p["ar"] if not db else db.ar, cs=p["cs"] if not db else db.cs,
+        od=p["od"] if not db else db.od, hp=p["hp"] if not db else db.hp,
+        bpm=p["bpm"], stars=stars, length_ms=p["length_ms"],
+        beatmap_id=p["beatmap_id"], ranked=ranked,
+        played_local=played, grade=grade,
+        last_played=db.last_played if db else 0,
+        score_count=len(scores), folder=p["folder"], origin="stable",
+    )
+
+
+def scan_stable(songs_dir: str = "", osu_db_path: str = "", scores_path: str = "") -> list[Beatmap]:
+    db_by_md5: dict = load_db_maps(osu_db_path)
+    scores_by_md5: dict = load_score_map(scores_path)
 
     files: list[str] = []
     if songs_dir and os.path.isdir(songs_dir):
@@ -46,41 +89,9 @@ def scan_stable(songs_dir: str = "", osu_db_path: str = "", scores_path: str = "
     out: list[Beatmap] = []
     seen: set[str] = set()
     for path in sorted(files):
-        p = parse_osu_file(path)
-        md5 = (p["md5"] or "").lower()
-        db = db_by_md5.get(md5) if md5 else None
-        scores = scores_by_md5.get(md5, []) if md5 else []
-        grade_any = bool(db and any(g for g in db.grades))
-        played = _played_from_db(
-            grade_any,
-            db.unplayed if db else True,
-            db.last_played if db else 0,
-            len(scores),
-        )
-        grade = ""
-        if db:
-            order = ["osu", "taiko", "catch", "mania"]
-            from .stable_db import GRADE_NAMES
-            g = db.grades[p["mode"]] if 0 <= p["mode"] < 4 else 0
-            grade = GRADE_NAMES.get(g, "")
-        stars = db.stars if db and db.stars else 0.0
-        ranked = RANKED_NAMES.get(db.ranked, "unknown") if db else "unknown"
-        set_key = str(p["set_id"]) if p["set_id"] not in (-1, 0, None) else f"local:{p['folder']}"
-        out.append(Beatmap(
-            id=md5 or path,
-            set_id=set_key,
-            artist=p["artist"], title=p["title"], creator=p["creator"],
-            diff=p["version"], source=p["source"], tags=p["tags"],
-            mode=p["mode"], mode_name=mode_name(p["mode"]),
-            ar=p["ar"] if not db else db.ar, cs=p["cs"] if not db else db.cs,
-            od=p["od"] if not db else db.od, hp=p["hp"] if not db else db.hp,
-            bpm=p["bpm"], stars=stars, length_ms=p["length_ms"],
-            beatmap_id=p["beatmap_id"], ranked=ranked,
-            played_local=played, grade=grade,
-            last_played=db.last_played if db else 0,
-            score_count=len(scores), folder=p["folder"], origin="stable",
-        ))
-        if md5:
+        out.append(parse_stable_file(path, db_by_md5, scores_by_md5))
+        md5 = out[-1].id.lower()
+        if len(md5) == 32:
             seen.add(md5)
 
     # db entries with no file on disk (deleted Songs but stale cache) — keep flagged

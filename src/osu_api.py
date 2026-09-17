@@ -114,20 +114,41 @@ def save_cache(path: str, data: dict) -> None:
         json.dump(data, f, indent=1)
 
 
+def _cache_hit(cache: dict, key: str, ttl_days: float) -> tuple[bool, bool]:
+    """(found_fresh, played). Plain-bool entries (pre-TTL) count as fresh."""
+    if key not in cache:
+        return False, False
+    v = cache[key]
+    if isinstance(v, bool):
+        return True, v
+    if isinstance(v, dict):
+        try:
+            age_days = (time.time() - float(v.get("at", 0))) / 86400.0
+        except (TypeError, ValueError):
+            return False, False
+        if age_days <= ttl_days:
+            return True, bool(v.get("played"))
+    return False, False
+
+
 def mark_online_played(maps: list, user_id: int, token: str,
                        cache_path: str = ".api_cache.json",
-                       sleep_s: float = 0.4) -> dict:
-    """Mutate maps in place (sets played_online). Returns stats dict."""
+                       sleep_s: float = 0.4, ttl_days: float = 7.0,
+                       progress=None) -> dict:
+    """Mutate maps in place (sets played_online). Returns stats dict.
+
+    Cache values are {played, at}; entries older than ttl_days are re-checked.
+    progress, when given, is called as progress(done, total) for job reporting.
+    """
     cache = load_cache(cache_path)
     stats = {"checked": 0, "from_cache": 0, "played": 0, "errors": 0, "skipped_no_id": 0}
-    for b in maps:
+    checkable = [b for b in maps if getattr(b, "beatmap_id", -1) not in (None, -1, 0)]
+    stats["skipped_no_id"] = len(maps) - len(checkable)
+    for i, b in enumerate(checkable):
         bid = getattr(b, "beatmap_id", -1)
-        if not bid or bid <= 0:
-            stats["skipped_no_id"] += 1
-            continue
         key = str(bid)
-        if key in cache:
-            has = bool(cache[key])
+        fresh, has = _cache_hit(cache, key, ttl_days)
+        if fresh:
             stats["from_cache"] += 1
         else:
             has = user_has_scores(bid, user_id, token)
@@ -135,12 +156,16 @@ def mark_online_played(maps: list, user_id: int, token: str,
             time.sleep(sleep_s)
             if has is None:
                 stats["errors"] += 1
+                if progress:
+                    progress(i + 1, len(checkable))
                 continue
-            cache[key] = bool(has)
+            cache[key] = {"played": bool(has), "at": time.time()}
             if stats["checked"] % 20 == 0:
                 save_cache(cache_path, cache)
         b.played_online = bool(has)
         if has:
             stats["played"] += 1
+        if progress:
+            progress(i + 1, len(checkable))
     save_cache(cache_path, cache)
     return stats
