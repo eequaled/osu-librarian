@@ -23,8 +23,25 @@ export function cachedVersion() {
   return libraryVersion;
 }
 
-export async function setMode(mode) {
-  const r = await fetch("/api/mode", {
+export async function detectInstalls() {
+  const r = await fetch("/api/detect");
+  if (!r.ok) throw new Error(`detect ${r.status}`);
+  return (await r.json()).installs || [];
+}
+
+export async function useInstall(kind, path) {
+  const r = await fetch("/api/use-install", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, path }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `use-install ${r.status}`);
+  libraryVersion = null;
+  return data;
+}
+
+export async function setMode(mode) {  const r = await fetch("/api/mode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode }),

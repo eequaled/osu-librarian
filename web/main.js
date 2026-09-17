@@ -1,5 +1,5 @@
 /* App wiring: state, filters, list, keyboard, scan/mode/online jobs. */
-import { library, pollJob, setMode, startOnlineCheck, startScan, status } from "./api.js";
+import { detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, defaultFilters, loadPrefs, savePrefs, summarize } from "./store.js";
@@ -250,12 +250,52 @@ async function boot() {
   state.paintMode?.();
   renderAccountChip(st.auth);
   if (st.scan.cached || st.counts.diffs) {
+    $("setup").hidden = true;
     await reloadLibrary();
   } else {
     renderStats([], { diffs: 0, sets: 0, played: 0, unplayed: 0 }, state.mode);
     listView.setRows([]);
-    toast("no cached library — press scan");
+    showSetup(st.installs || []);
   }
+}
+
+function showSetup(installs) {
+  const box = $("setup"), btns = $("setup-btns"), text = $("setup-text");
+  btns.replaceChildren();
+  if (!installs.length) {
+    text.textContent = "No osu! install found — set songs_dir / lazer_dir in settings.json, then press scan.";
+    box.hidden = false;
+    return;
+  }
+  text.textContent = "Found on this machine:";
+  for (const inst of installs.slice(0, 4)) {
+    const b = document.createElement("button");
+    const markers = inst.kind === "stable"
+      ? [inst.songs && "Songs", inst.osu_db && "osu!.db"].filter(Boolean).join("+")
+      : [inst.files && "files", inst.realm && "client.realm"].filter(Boolean).join("+");
+    b.textContent = `use ${inst.kind} (${markers})`;
+    b.title = inst.path;
+    b.addEventListener("click", async () => {
+      try {
+        await useInstall(inst.kind, inst.path);
+        state.mode = inst.kind;
+        state.paintMode();
+        box.hidden = true;
+        toast(`using ${inst.kind} at ${inst.path}`);
+        runScan(false);
+      } catch (e) {
+        toast(`cannot use install: ${e.message}`, "error");
+      }
+    });
+    const wrap = document.createElement("span");
+    wrap.appendChild(b);
+    const path = document.createElement("span");
+    path.className = "path";
+    path.textContent = ` ${inst.path}`;
+    wrap.appendChild(path);
+    btns.appendChild(wrap);
+  }
+  box.hidden = false;
 }
 
 function main() {

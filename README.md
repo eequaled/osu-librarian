@@ -14,6 +14,13 @@ ranked status, 7 sort orders, **by mapset / by difficulty** toggle, checkboxes +
 shift-click ranges + `select filtered` / `invert`, detail pane, and
 `export…` (`.json` / `.txt` / stable `collection.db`).
 
+**No setup needed in most cases:** if your library is empty the app offers every
+osu! install it finds (stable `%localappdata%/osu!`, wine prefixes, Program
+Files, drive roots; lazer `%appdata%/osu`, `~/.local/share/osu`, …) as one-click
+**use stable/lazer** buttons. Detection checks marker files (`Songs/` +
+`osu!.db`, `files/` + `client.realm`), so empty folders don't count. Manual
+override stays available via `settings.json`.
+
 ## What it does
 
 - **Mode switch:** `stable` | `lazer` buttons (server tracks the active mode;
@@ -75,6 +82,8 @@ python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library
 | GET | `/api/auth/status` | `{linked, user_id}` |
 | POST | `/api/online-check` | background bulk score check → `{job_id}` |
 | POST | `/api/export` | `{ids, format: json\|txt\|collection}` → download |
+| GET | `/api/detect` | installs found on this machine |
+| POST | `/api/use-install` | `{kind, path}` adopt an install, persist to settings |
 
 Settings file `settings.json` stores mode + paths + api creds (see `settings.example.json`). The UI can switch modes without CLI flags.
 
