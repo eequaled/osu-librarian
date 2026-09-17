@@ -263,11 +263,10 @@ function showSetup(installs) {
   const box = $("setup"), btns = $("setup-btns"), text = $("setup-text");
   btns.replaceChildren();
   if (!installs.length) {
-    text.textContent = "No osu! install found — set songs_dir / lazer_dir in settings.json, then press scan.";
-    box.hidden = false;
-    return;
+    text.textContent = "No osu! install found in the usual places.";
+  } else {
+    text.textContent = "Found on this machine:";
   }
-  text.textContent = "Found on this machine:";
   for (const inst of installs.slice(0, 4)) {
     const b = document.createElement("button");
     const markers = inst.kind === "stable"
@@ -275,18 +274,7 @@ function showSetup(installs) {
       : [inst.files && "files", inst.realm && "client.realm"].filter(Boolean).join("+");
     b.textContent = `use ${inst.kind} (${markers})`;
     b.title = inst.path;
-    b.addEventListener("click", async () => {
-      try {
-        await useInstall(inst.kind, inst.path);
-        state.mode = inst.kind;
-        state.paintMode();
-        box.hidden = true;
-        toast(`using ${inst.kind} at ${inst.path}`);
-        runScan(false);
-      } catch (e) {
-        toast(`cannot use install: ${e.message}`, "error");
-      }
-    });
+    b.addEventListener("click", () => adoptInstall(inst.kind, inst.path));
     const wrap = document.createElement("span");
     wrap.appendChild(b);
     const path = document.createElement("span");
@@ -295,7 +283,39 @@ function showSetup(installs) {
     wrap.appendChild(path);
     btns.appendChild(wrap);
   }
+  // manual fallback: install lives somewhere unusual
+  const input = document.createElement("input");
+  input.id = "setup-path";
+  input.size = 40;
+  input.placeholder = "…or paste your osu! folder path here";
+  input.setAttribute("aria-label", "osu install folder path");
+  const useStable = document.createElement("button");
+  useStable.textContent = "use as stable";
+  useStable.addEventListener("click", () => adoptInstall("stable", input.value.trim()));
+  const useLazer = document.createElement("button");
+  useLazer.textContent = "use as lazer";
+  useLazer.addEventListener("click", () => adoptInstall("lazer", input.value.trim()));
+  const wrap = document.createElement("span");
+  wrap.append(input, useStable, useLazer);
+  btns.appendChild(wrap);
   box.hidden = false;
+}
+
+async function adoptInstall(kind, path) {
+  if (!path) {
+    toast("paste your osu! folder path first", "error");
+    return;
+  }
+  try {
+    await useInstall(kind, path);
+    state.mode = kind;
+    state.paintMode();
+    $("setup").hidden = true;
+    toast(`using ${kind} at ${path}`);
+    runScan(false);
+  } catch (e) {
+    toast(`cannot use install: ${e.message}`, "error");
+  }
 }
 
 function main() {
