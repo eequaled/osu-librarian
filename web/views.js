@@ -33,14 +33,21 @@ function rowHtml(row, selected) {
   const sel = selected ? "☑" : "☐";
   if (row.type === "set") {
     const s = row.set;
-    return `<div class="cb">${sel}</div>` +
+    const firstId = s.maps[0]?.id;
+    const thumb = firstId
+      ? `<img class="thumb" loading="lazy" src="/api/art?id=${encodeURIComponent(firstId)}" alt="" onerror="this.remove()">`
+      : "";
+    return `<div class="cb">${sel}</div>` + thumb +
       `<div class="main-cell">▸ ${escapeHtml(s.artist)} — ${escapeHtml(s.title)} ` +
       `<span class="sub">${s.maps.length} diffs · ${s.played}/${s.maps.length} played · ★${s.maxStars.toFixed(1)}</span></div>`;
   }
   const m = row.map;
   const dot = isPlayed(m) ? "yes" : "";
   const pad = row.child ? "style='padding-left:28px'" : "";
-  return `<div class="cb">${sel}</div><div class="dot ${dot}"></div>` +
+  const thumb = m.id
+    ? `<img class="thumb" loading="lazy" src="/api/art?id=${encodeURIComponent(m.id)}" alt="" onerror="this.remove()">`
+    : "";
+  return `<div class="cb">${sel}</div><div class="dot ${dot}"></div>` + thumb +
     `<div class="main-cell" ${pad}>${escapeHtml(m.artist)} — ${escapeHtml(m.title)} ` +
     `<span class="sub">[${escapeHtml(m.diff)}]</span><br><span class="sub">${mapMeta(m)}</span></div>` +
     `<div class="meta"><span>${escapeHtml(m.mode_name || "")}</span>` +

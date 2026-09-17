@@ -56,6 +56,8 @@ button[aria-pressed="true"], .mode-switch button.active { background: #2c3c66; b
 .row .sub { color: var(--dim); font-size: 12px; font-weight: 400; }
 .row .meta { display: flex; gap: 10px; font-size: 12px; color: var(--dim); flex-shrink: 0; }
 .row .grade { color: #ffd479; min-width: 24px; text-align: right; }
+.row .thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; flex-shrink: 0; background: #232c44; }
+.row.set .thumb { width: 36px; height: 36px; }
 
 .detail { width: 300px; flex-shrink: 0; padding: 14px; background: var(--panel);
   border-left: 1px solid var(--line); overflow-y: auto; font-size: 14px; }
