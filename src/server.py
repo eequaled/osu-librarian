@@ -201,14 +201,26 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
     from .lazer_scanner import load_realm_export, parse_lazer_blob, scan_lazer
     fp_new = cachemod.fingerprint_lazer(paths["lazer_dir"])
     old_keys, old_rows, old_fp = cachemod.load_scan("lazer") if not fresh else ([], [], {})
-    realm = {"played_ids": set(), "played_md5": set(), "stars": {}}
-    if paths.get("realm_export"):
+    realm = {"played_ids": set(), "played_md5": set(), "stars": {},
+             "grades": {}, "statuses": {}, "dates": {}, "set_files": {}}
+    effective_export = paths.get("realm_export", "") or ""
+    if effective_export:
         try:
-            realm = load_realm_export(paths["realm_export"])
+            realm = load_realm_export(effective_export)
         except (OSError, ValueError):
             pass
+    else:
+        # No explicit export configured: try the node helper (cached dump).
+        try:
+            from .lazer_scanner import normalize_realm_dump
+            from .realm_export import export_realm as _export_realm
+            dump = _export_realm(paths.get("lazer_dir", "") or "")
+            if isinstance(dump, dict):
+                realm = normalize_realm_dump(dump)
+        except Exception:
+            pass
     if fresh or not old_rows or not old_fp:
-        maps = scan_lazer(paths["lazer_dir"], paths.get("realm_export", ""))
+        maps = scan_lazer(paths["lazer_dir"], effective_export, _realm=realm)
         job.total, job.done = len(maps), len(maps)
         keys = _lazer_keys(paths["lazer_dir"], maps)
         cachemod.save_scan("lazer", keys, to_dict_list(maps), fp_new)
@@ -330,6 +342,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._status()
         if path == "/api/library":
             return self._library()
+        if path == "/api/art":
+            return self._art(parsed.query)
         if path.startswith("/api/jobs/"):
             job = registry.get(path.rsplit("/", 1)[-1])
             if job is None:
@@ -485,6 +499,85 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Export-Sha", digest)
         self.end_headers()
         self.wfile.write(payload)
+
+    def _art(self, query: str):
+        """GET /api/art?id=<row id>: serve background image for one row.
+
+        stable -> Songs/<folder>/<bg>; lazer -> files/<h0>/<h0:2>/<hash>.
+        The lazer layout (files/<hash[0]>/<hash[:2]>/<hash>, SHA-256 hex) was
+        verified empirically against the real store: every Beatmap.Hash and
+        File.Hash resolves to files/H[0]/H[0:2]/H on disk.
+        """
+        qs = urllib.parse.parse_qs(query or "")
+        row_id = (qs.get("id", [""])[0] or "")
+        if not row_id:
+            return self._json(404, {"error": "missing id"})
+        mode = get_mode()
+        try:
+            _keys, rows, _fp = cachemod.load_scan(mode)
+        except Exception:
+            rows = []
+        row = None
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("id") == row_id:
+                row = r
+                break
+        if row is None:
+            return self._json(404, {"error": "unknown id"})
+        s = load_settings()
+        full = ""
+        if mode == "lazer":
+            h = str(row.get("bg_hash", "") or "")
+            if len(h) != 64 or any(c not in "0123456789abcdefABCDEF" for c in h):
+                return self._json(404, {"error": "no background"})
+            h = h.lower()
+            lazer_dir = library_paths(s, "lazer").get("lazer_dir", "") or ""
+            base = os.path.join(lazer_dir, "files")
+            # Verified layout: files/<h0>/<h0:2>/<hash>
+            full = os.path.normpath(os.path.join(base, h[0], h[:2], h))
+            if not full.startswith(os.path.normpath(base) + os.sep):
+                return self._json(404, {"error": "no background"})
+        else:
+            folder = str(row.get("folder", "") or "")
+            bg = str(row.get("bg", "") or "")
+            if not folder or not bg:
+                return self._json(404, {"error": "no background"})
+            songs = library_paths(s, "stable").get("songs_dir", "") or ""
+            if not songs:
+                return self._json(404, {"error": "no background"})
+            # Never join raw query input; folder/bg come from the scan cache.
+            # Basename-only bg + normpath prefix check blocks traversal.
+            full = os.path.normpath(os.path.join(songs, folder, os.path.basename(bg)))
+            if not full.startswith(os.path.normpath(songs) + os.sep):
+                return self._json(404, {"error": "no background"})
+        if not full or not os.path.isfile(full):
+            return self._json(404, {"error": "no background"})
+        # Lazer blobs are extensionless hashes; type by the bg filename.
+        ctype, _ = mimetypes.guess_type(str(row.get("bg", "") or ""))
+        if not ctype:
+            ctype, _ = mimetypes.guess_type(full)
+        try:
+            st = os.stat(full)
+            etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        except OSError:
+            return self._json(404, {"error": "no background"})
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+        try:
+            with open(full, "rb") as f:
+                body = f.read()
+        except OSError:
+            return self._json(404, {"error": "no background"})
+        self.send_response(200)
+        self.send_header("Content-Type", ctype or "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "public,max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _static(self, path: str):
         if path == "/":

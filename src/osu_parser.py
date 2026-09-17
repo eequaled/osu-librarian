@@ -25,6 +25,26 @@ def _parse_kv(line: str):
     return k.strip(), v.strip()
 
 
+def _parse_bg_line(line: str) -> str:
+    """Extract background filename from an [Events] line like 0,0,"bg.jpg",0,0."""
+    s = line.strip()
+    if not s or s.startswith("//"):
+        return ""
+    parts = s.split(",")
+    if len(parts) < 3 or parts[0].strip() != "0":
+        return ""
+    # Filename may itself contain commas when quoted, so prefer quoted span.
+    if '"' in s:
+        try:
+            first = s.index('"')
+            second = s.index('"', first + 1)
+            return s[first + 1:second].strip()
+        except ValueError:
+            pass
+    # Fallback: third CSV field, unquoted.
+    return parts[2].strip().strip('"').strip()
+
+
 def parse_osu_file(path: str) -> dict:
     """Parse one .osu file. Never raises on weird maps — returns best effort."""
     info: dict = {
@@ -37,7 +57,7 @@ def parse_osu_file(path: str) -> dict:
         "beatmap_id": -1, "set_id": -1,
         "mode": 0, "ar": 5.0, "cs": 4.0, "od": 5.0, "hp": 5.0,
         "bpm": 0.0, "length_ms": 0, "drain_ms": 0,
-        "md5": "",
+        "md5": "", "bg": "",
     }
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -125,6 +145,12 @@ def parse_osu_file(path: str) -> dict:
                         last_object_ms = t
                 except ValueError:
                     pass
+        elif section == "Events":
+            # Background: 0,0,"bg.jpg",0,0 (event type 0 only; ignore video/breaks)
+            if not info.get("bg"):
+                bg = _parse_bg_line(line)
+                if bg:
+                    info["bg"] = bg
     if uninherited_ms_per_quarter:
         # BPM of first red line (osu! uses the max-BPM section for display in some
         # places; first is the most useful single number for an MVP).

@@ -1,0 +1,9 @@
+{
+  "name": "realm-export",
+  "version": "1.0.0",
+  "description": "Dump osu!lazer client.realm (Realm DB) to JSON for osu_librarian scanner. Read-only.",
+  "type": "module",
+  "dependencies": {
+    "realm": "20.2.0"
+  }
+}

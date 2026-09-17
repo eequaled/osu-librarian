@@ -7,3 +7,5 @@ report.html
 .api_cache.json
 .token*.json
 .opencode/
+node_modules/
+.cache/

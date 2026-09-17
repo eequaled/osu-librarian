@@ -39,6 +39,9 @@ class Beatmap:
     score_count: int = 0
     folder: str = ""
     origin: str = "stable"       # stable | lazer
+    bg: str = ""
+    bg_hash: str = ""
+    date_added: str = ""
 
     @property
     def played(self) -> bool:
