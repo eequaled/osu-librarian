@@ -33,6 +33,21 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 registry = JobRegistry()
 _settings_lock = threading.Lock()
+_current_mode: str | None = None  # active mode for this server process
+
+
+def get_mode() -> str:
+    """Active mode: last scanned/switched mode, else settings.json."""
+    global _current_mode
+    if _current_mode not in ("stable", "lazer"):
+        _current_mode = load_settings().mode
+    return _current_mode
+
+
+def set_mode(mode: str) -> str:
+    global _current_mode
+    _current_mode = mode
+    return mode
 
 
 def library_paths(s: Settings, mode: str) -> dict:
@@ -250,7 +265,7 @@ def run_online_check() -> tuple[str, str]:
     user_id = _load_token().get("user_id") or settings.api.user_id
     if not user_id:
         return "", "user id unknown — link account again"
-    keys, rows, fp = cachemod.load_scan(settings.mode)
+    keys, rows, fp = cachemod.load_scan(get_mode())
     if not rows:
         return "", "library empty — run a scan first"
 
@@ -266,7 +281,7 @@ def run_online_check() -> tuple[str, str]:
             job.total = t
 
         mark_online_played(maps, int(user_id), token, progress=_prog)
-        cachemod.save_scan(settings.mode, keys, to_dict_list(maps), fp)
+        cachemod.save_scan(get_mode(), keys, to_dict_list(maps), fp)
 
     job = registry.create("online", total=1)
     registry.run_background(job, _fn)
@@ -328,10 +343,17 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         body = self._read_json()
         if path == "/api/scan":
-            mode = body.get("mode") or load_settings().mode
+            mode = body.get("mode") or get_mode()
             if mode not in ("stable", "lazer"):
                 return self._json(400, {"error": "mode must be stable|lazer"})
+            set_mode(mode)
             return self._json(200, {"job_id": run_scan(mode, bool(body.get("fresh")))})
+        if path == "/api/mode":
+            mode = body.get("mode", "")
+            if mode not in ("stable", "lazer"):
+                return self._json(400, {"error": "mode must be stable|lazer"})
+            set_mode(mode)
+            return self._json(200, {"mode": mode})
         if path == "/api/auth/code":
             return self._auth_code(body.get("code", ""))
         if path == "/api/online-check":
@@ -347,9 +369,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _status(self):
         s = load_settings()
-        keys, rows, fp = cachemod.load_scan(s.mode)
-        paths = library_paths(s, s.mode)
-        if s.mode == "lazer":
+        mode = get_mode()
+        keys, rows, fp = cachemod.load_scan(mode)
+        paths = library_paths(s, mode)
+        if mode == "lazer":
             lok = os.path.isdir(os.path.join(paths["lazer_dir"], "files"))
             ok = {"songs_ok": lok, "db_ok": lok, "lazer_ok": lok}
         else:
@@ -360,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
                                                                "played": 0, "unplayed": 0}
         tok = _load_token()
         self._json(200, {
-            "mode": s.mode, **ok, "counts": counts,
+            "mode": mode, **ok, "counts": counts,
             "scan": {"version": cachemod.version_for(len(rows), fp) if fp else "none",
                      "cached": bool(rows)},
             "jobs": {"active": registry.active()},
@@ -369,8 +392,7 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def _library(self):
-        s = load_settings()
-        _keys, rows, fp = cachemod.load_scan(s.mode)
+        _keys, rows, fp = cachemod.load_scan(get_mode())
         version = cachemod.version_for(len(rows), fp) if fp else "empty"
         if self.headers.get("If-None-Match") == f'"{version}"':
             self.send_response(304)
@@ -417,7 +439,7 @@ class Handler(BaseHTTPRequestHandler):
         if fmt not in exportmod.EXPORTERS:
             return self._json(400, {"error": "format must be json|txt|collection"})
         s = load_settings()
-        _keys, rows, _fp = cachemod.load_scan(s.mode)
+        _keys, rows, _fp = cachemod.load_scan(get_mode())
         want = set(body.get("ids", []))
         sel = [r for r in rows if r.get("id") in want] if want else rows
         if fmt == "collection":

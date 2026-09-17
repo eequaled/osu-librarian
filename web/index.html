@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osu! Librarian</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">osu! Librarian</div>
+  <div class="mode-switch" role="group" aria-label="client mode">
+    <button id="mode-stable" data-mode="stable">stable</button>
+    <button id="mode-lazer" data-mode="lazer">lazer</button>
+  </div>
+  <button id="scan-btn">scan</button>
+  <button id="scan-fresh-btn" title="ignore the scan cache">rescan all</button>
+  <div id="job-progress" class="job" hidden><span id="job-label"></span><progress id="job-bar" max="100" value="0"></progress></div>
+  <div class="spacer"></div>
+  <span id="account-chip" class="chip">not linked</span>
+  <button id="link-btn">link account</button>
+  <button id="online-btn" title="check linked account scores via osu! API">online check</button>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h2>Library</h2>
+    <div id="stats">loading…</div>
+    <h2>View</h2>
+    <label><input type="radio" name="view" value="difficulty" checked> by difficulty</label>
+    <label><input type="radio" name="view" value="mapset"> by mapset</label>
+    <h2>Sort</h2>
+    <select id="sort" aria-label="sort">
+      <option value="title">title</option>
+      <option value="artist">artist</option>
+      <option value="creator">creator</option>
+      <option value="bpm">bpm</option>
+      <option value="length">length</option>
+      <option value="stars">stars</option>
+      <option value="rank">rank achieved</option>
+    </select>
+    <h2>Shortcuts</h2>
+    <p class="hint">/ search · ↑↓ move · space select · shift+click range</p>
+  </aside>
+
+  <main class="main">
+    <div class="filterbar" role="search">
+      <input id="q" type="search" placeholder="search artist / title / mapper / diff / id…" aria-label="search" autocomplete="off">
+      <select id="played" aria-label="played filter">
+        <option value="all">all</option>
+        <option value="played">played</option>
+        <option value="unplayed">unplayed</option>
+      </select>
+      <select id="fmode" aria-label="mode filter">
+        <option value="all">all modes</option>
+        <option value="osu">osu</option>
+        <option value="taiko">taiko</option>
+        <option value="catch">catch</option>
+        <option value="mania">mania</option>
+      </select>
+      <label title="min stars">★<input id="smin" type="number" min="0" max="99" step="0.5" value="0"></label>
+      <span>–</span>
+      <label title="max stars"><input id="smax" type="number" min="0" max="99" step="0.5" value="99"></label>
+      <select id="ranked" aria-label="ranked status filter">
+        <option value="all">any status</option>
+        <option value="ranked">ranked</option>
+        <option value="loved">loved</option>
+        <option value="qualified">qualified</option>
+        <option value="pending">pending</option>
+        <option value="unknown">unknown</option>
+      </select>
+    </div>
+    <div id="list-meta" class="list-meta"></div>
+    <div id="list" class="list" tabindex="0" role="listbox" aria-label="beatmaps" aria-multiselectable="true">
+      <div id="list-spacer"><div id="list-rows"></div></div>
+    </div>
+  </main>
+
+  <aside id="detail" class="detail" aria-label="details"></aside>
+</div>
+
+<div id="bulkbar" class="bulkbar" hidden>
+  <span id="sel-count"></span>
+  <button id="sel-filtered">select filtered</button>
+  <button id="sel-invert">invert</button>
+  <button id="sel-clear">clear</button>
+  <button id="sel-copy">copy ids</button>
+  <button id="sel-export">export…</button>
+</div>
+
+<dialog id="auth-dialog">
+  <h3>Link osu! account</h3>
+  <p>Register a free OAuth app at <b>osu.ppy.sh → account settings → OAuth</b>,
+     put the id/secret in <code>settings.json</code>, then:</p>
+  <p><button id="auth-open">1 · open osu! authorize page</button></p>
+  <p><input id="auth-code" placeholder="2 · paste ?code= here" size="36"> <button id="auth-submit">link</button></p>
+  <p><button id="auth-close">close</button></p>
+</dialog>
+
+<dialog id="export-dialog">
+  <h3>Export selection</h3>
+  <p><span id="export-count"></span> beatmaps selected.</p>
+  <p>
+    <button data-fmt="json">.json</button>
+    <button data-fmt="txt">.txt</button>
+    <button data-fmt="collection">collection.db</button>
+  </p>
+  <p><button id="export-close">close</button></p>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>
