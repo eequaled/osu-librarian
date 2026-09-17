@@ -29,6 +29,35 @@ class Install:
         return self.__dict__.copy()
 
 
+def _wine_prefixes(home: str) -> list[str]:
+    """All Wine prefix roots worth checking on Linux/macOS."""
+    cands = [os.path.join(home, ".wine")]
+    cands += sorted(glob.glob(os.path.join(home, ".wine*")))
+    cands += sorted(glob.glob(os.path.join(home, "Games", "osu*")))
+    # Bottles (native + flatpak)
+    cands += sorted(glob.glob(os.path.join(home, ".local", "share", "bottles", "bottles", "*")))
+    cands += sorted(glob.glob(os.path.join(home, ".var", "app", "com.usebottles.bottles",
+                                           "data", "bottles", "bottles", "*")))
+    # generic Bottles custom paths + Lutris runners
+    cands += sorted(glob.glob(os.path.join(home, ".local", "share", "lutris",
+                                           "runners", "wine", "*")))
+    # explicit custom prefix
+    if os.environ.get("WINEPREFIX"):
+        cands.append(os.environ["WINEPREFIX"])
+    # Steam/Proton prefixes (osu! added as a non-Steam game, or Proton-GE runs):
+    # <steam>/steamapps/compatdata/<id>/pfx
+    for steam in (os.path.join(home, ".local", "share", "Steam"),
+                  os.path.join(home, ".steam", "steam")):
+        cands += sorted(glob.glob(os.path.join(steam, "steamapps", "compatdata", "*", "pfx")))
+    out, seen = [], set()
+    for pre in cands:
+        pre = os.path.normpath(pre)
+        if pre not in seen and os.path.isdir(pre):
+            seen.add(pre)
+            out.append(pre)
+    return out
+
+
 def _stable_candidates() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     home = os.path.expanduser("~")
@@ -48,17 +77,7 @@ def _stable_candidates() -> list[tuple[str, str]]:
         out.append((os.path.join(home, "Applications/osu!.app/Contents/Resources/drive_c/osu!"),
                     "user Applications"))
     # wine prefixes (linux + mac): drive_c/users/*/AppData/Local/osu!
-    prefixes = [os.path.join(home, ".wine")]
-    prefixes += sorted(glob.glob(os.path.join(home, ".wine*")))
-    prefixes += sorted(glob.glob(os.path.join(home, "Games", "osu*")))
-    prefixes += sorted(glob.glob(os.path.join(home, ".local", "share", "lutris",
-                                              "runners", "wine", "*")))
-    seen = set()
-    for pre in prefixes:
-        pre = os.path.normpath(pre)
-        if pre in seen or not os.path.isdir(pre):
-            continue
-        seen.add(pre)
+    for pre in _wine_prefixes(home):
         users = glob.glob(os.path.join(pre, "drive_c", "users", "*", "AppData",
                                        "Local", "osu!"))
         for u in sorted(users):
@@ -67,6 +86,7 @@ def _stable_candidates() -> list[tuple[str, str]]:
             full = os.path.join(pre, sub)
             if os.path.isdir(full):
                 out.append((full, f"wine prefix {os.path.basename(pre)}"))
+    out.append((os.path.join(home, "osu!"), "home folder"))
     out.append((os.path.join(home, ".local", "share", "osu-stable"), "data folder"))
     return out
 
@@ -84,6 +104,14 @@ def _lazer_candidates() -> list[tuple[str, str]]:
     else:
         xdg = os.environ.get("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
         out.append((os.path.join(xdg, "osu"), "default data folder"))
+        # flatpak (sh.ppy.osu): data lands under the sandbox
+        out.append((os.path.join(home, ".var", "app", "sh.ppy.osu", "data", "osu"),
+                    "flatpak data"))
+        out.append((os.path.join(home, ".var", "app", "sh.ppy.osu", ".local",
+                                 "share", "osu"), "flatpak data"))
+        # Steam + custom installs people commonly use
+        out.append((os.path.join(home, "osu"), "home folder"))
+        out.append((os.path.join(home, "Games", "osu"), "Games folder"))
     return out
 
 

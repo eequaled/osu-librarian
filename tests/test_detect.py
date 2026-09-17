@@ -60,6 +60,43 @@ class DetectTests(unittest.TestCase):
         installs = detect.find_installs()
         self.assertEqual([i for i in installs if i.kind == "lazer"], [])
 
+    def test_finds_bottles_prefix(self):
+        songs = self._mk(".local", "share", "bottles", "bottles", "gaming",
+                         "drive_c", "users", "me", "AppData", "Local",
+                         "osu!", "Songs", "1 X - Y")
+        with open(os.path.join(songs, "a.osu"), "w") as f:
+            f.write("osu file format v14\n")
+        installs = detect.find_installs()
+        self.assertTrue([i for i in installs if i.kind == "stable"], installs)
+
+    def test_finds_steam_compatdata_prefix(self):
+        songs = self._mk(".local", "share", "Steam", "steamapps", "compatdata",
+                         "12345", "pfx", "drive_c", "users", "steamuser",
+                         "AppData", "Local", "osu!", "Songs", "1 X - Y")
+        with open(os.path.join(songs, "a.osu"), "w") as f:
+            f.write("osu file format v14\n")
+        installs = detect.find_installs()
+        self.assertTrue([i for i in installs if i.kind == "stable"], installs)
+
+    def test_finds_flatpak_lazer(self):
+        self._mk(".var", "app", "sh.ppy.osu", "data", "osu", "files", "ab")
+        installs = detect.find_installs()
+        lazers = [i for i in installs if i.kind == "lazer"]
+        self.assertTrue(lazers, installs)
+        self.assertTrue(lazers[0].files)
+
+    def test_respects_wineprefix(self):
+        os.environ["WINEPREFIX"] = os.path.join(self.tmp.name, "custom-prefix")
+        try:
+            songs = self._mk("custom-prefix", "drive_c", "users", "me", "AppData",
+                             "Local", "osu!", "Songs", "1 X - Y")
+            with open(os.path.join(songs, "a.osu"), "w") as f:
+                f.write("osu file format v14\n")
+            installs = detect.find_installs()
+            self.assertTrue([i for i in installs if i.kind == "stable"], installs)
+        finally:
+            os.environ.pop("WINEPREFIX", None)
+
 
 if __name__ == "__main__":
     unittest.main()
