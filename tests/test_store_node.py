@@ -54,7 +54,8 @@ class StoreJsTests(unittest.TestCase):
         self.assertEqual(out["rowsCollapsed"], 2)
         self.assertEqual(out["rowsExpanded"], 5)
         self.assertEqual(out["summary"],
-                         {"diffs": 3, "sets": 2, "played": 2, "unplayed": 1})
+                         {"diffs": 3, "sets": 2, "played": 2, "unplayed": 1,
+                          "local": 1, "onlineOnly": 1})
         self.assertEqual(out["esc"], "&lt;b&gt;&amp;&quot;")
 
 

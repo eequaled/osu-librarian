@@ -83,9 +83,11 @@ export function buildRows(maps, f, expanded) {
 }
 
 export function summarize(maps) {
-  const played = maps.filter(isPlayed).length;
+  const local = maps.filter((m) => m.played_local).length;
+  const onlineOnly = maps.filter((m) => !m.played_local && m.played_online).length;
   return { diffs: maps.length, sets: new Set(maps.map((m) => m.set_id)).size,
-           played, unplayed: maps.length - played };
+           played: local + onlineOnly, unplayed: maps.length - local - onlineOnly,
+           local, onlineOnly };
 }
 
 /* persistent UI prefs (filters + selection), never the library itself */

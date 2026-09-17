@@ -13,11 +13,14 @@ export function toast(msg, kind = "") {
 }
 
 export function renderStats(maps, summary, mode) {
+  const split = summary.onlineOnly
+    ? ` (<b>${summary.local}</b> local + <b>${summary.onlineOnly}</b> online)`
+    : "";
   document.getElementById("stats").innerHTML =
     `mode: <b>${escapeHtml(mode)}</b><br>` +
     `sets: <b>${summary.sets}</b><br>` +
     `diffs: <b>${summary.diffs}</b><br>` +
-    `played: <b>${summary.played}</b><br>unplayed: <b>${summary.unplayed}</b>`;
+    `played: <b>${summary.played}</b>${split}<br>unplayed: <b>${summary.unplayed}</b>`;
 }
 
 function mapMeta(m) {
