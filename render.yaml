@@ -1,0 +1,17 @@
+# Render Blueprint for the osu! OAuth relay (free tier, no card required).
+# Dashboard: New -> Blueprint -> connect this repo. Then set the 3 env vars
+# below in the dashboard (they hold secrets, so they are NOT in this file).
+services:
+  - type: web
+    name: osu-librarian-relay
+    runtime: docker
+    rootDir: relay
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: OSU_CLIENT_ID
+        sync: false
+      - key: OSU_CLIENT_SECRET
+        sync: false
+      - key: RELAY_PUBLIC_URL
+        sync: false
