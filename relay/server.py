@@ -193,8 +193,6 @@ def _post(url: str, fields: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
             except Exception:
                 pass
         detail = _extract_error_detail(body)
-        # TEMPORARY DEBUG (remove after 401 root-caused): full upstream body.
-        print(f"[auth-debug] upstream HTTP {e.code}: {body[:500]}", flush=True)
         if detail:
             raise RelayError(f"token exchange failed: HTTP {e.code}: {detail}")
         raise RelayError(f"token exchange failed: HTTP {e.code}")
@@ -386,10 +384,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_html(400, "Authorization failed", "relay not configured")
         redirect_uri = public_url + "/auth/callback"
 
-        # TEMPORARY DEBUG (remove after 401 root-caused): no secrets, hash only.
-        import hashlib as _hl
-        print(f"[auth-debug] cid={client_id} secsha={_hl.sha256(client_secret.encode()).hexdigest()[:12]}"
-              f" seclen={len(client_secret)} redir={redirect_uri} codelen={len(code)}", flush=True)
         try:
             token_obj = _post(OSU_TOKEN_URL, {
                 "grant_type": "authorization_code",

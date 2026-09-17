@@ -92,7 +92,20 @@ would give 401 even with a dummy code. So the stored secret is (now) valid.
 - Oracle re-test (dummy code; expect 400 invalid_grant, NEVER paste output with secret):
   form POST grant_type=authorization_code, client_id, client_secret (from settings file), code=deadbeef-…, redirect_uri=https://osu-librarian-relay.onrender.com/auth/callback
 
-## Open questions for the user
+## RESOLUTION (00:42 local)
+One-click linking now works end to end: `Account linked as eequaled`
+(user_id 37704500), `.token.json` saved 0600, `/api/auth/status`
+`linked: true`. Forensic line from the successful exchange:
+`cid=68736 secsha=5606be79d486 seclen=40` — runtime holds the fixed secret.
+Root cause of the repeated 401s: the relay PROCESS serving traffic still
+held the pre-fix (mistyped) secret even though the Render API already
+showed the corrected env value and the deploy was marked live. Nothing in
+the request path was wrong — redeploying (fresh container) fixed it.
+Lesson: after changing Render env vars, verify the RUNNING process, not
+just the API value (temporary `[auth-debug]` probe did this; removed
+afterwards in `Remove the temporary relay auth forensics`).
+
+## Open questions for the user (all resolved during the session)
 - Exact time of the latest failed attempt (to correlate with logs/deploys)?
 - Was Reset/Update pressed on the osu! app AFTER pasting the secret here?
 - Is there more than one "librarian"-like app / did client_id 68736 get deleted+recreated?
