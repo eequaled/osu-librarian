@@ -123,15 +123,27 @@ async function reloadLibrary() {
   }
 }
 
-function runScan(fresh) {
+let scanning = false;
+
+function runScan() {
+  if (scanning) {
+    toast("scan already running");
+    return;
+  }
+  scanning = true;
+  $("scan-btn").disabled = true;
   const p = (async () => {
-    const id = await startScan(state.mode, fresh);
+    const id = await startScan(state.mode, true); // scan always reads everything
     await pollJob(id, (j) => {
-      $("job-label").textContent = `scan ${j.done}/${j.total || "…"}`;
-      if (j.total) $("job-bar").value = (100 * j.done) / j.total;
+      const total = j.total || 1;
+      $("job-label").textContent = `scan ${Math.min(j.done, total)}/${total}`;
+      $("job-bar").value = (100 * Math.min(j.done, total)) / total;
     });
   })();
-  showJob("scan", p, () => reloadLibrary());
+  showJob("scan", p, () => reloadLibrary()).finally(() => {
+    scanning = false;
+    $("scan-btn").disabled = false;
+  });
 }
 
 /* ---------- boot ---------- */
@@ -223,8 +235,7 @@ function bindTopbar() {
   paintMode();
   state.paintMode = paintMode;
 
-  $("scan-btn").addEventListener("click", () => runScan(false));
-  $("scan-fresh-btn").addEventListener("click", () => runScan(true));
+  $("scan-btn").addEventListener("click", () => runScan());
   $("online-btn").addEventListener("click", async () => {
     try {
       const id = await startOnlineCheck();
@@ -327,7 +338,7 @@ async function adoptInstall(kind, path) {
     state.paintMode();
     $("setup").hidden = true;
     toast(`using ${kind} at ${path}`);
-    runScan(false);
+    runScan();
   } catch (e) {
     toast(`cannot use install: ${e.message}`, "error");
   }

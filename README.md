@@ -66,8 +66,9 @@ python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library
 ## Caching (why repeat visits are instant)
 
 1. **Scan cache** — `.cache/scan-<mode>.json` + manifest of per-file mtimes.
-   Rescans re-parse only new/changed files; db/score changes rejoin without
-   re-parsing; `played_online` survives rescans. `rescan all` (`fresh=1`) bypasses.
+   The **scan** button always reads the whole library; unchanged files reuse
+   cached rows and only new/changed files are re-parsed. db/score changes
+   rejoin without re-parsing; `played_online` survives rescans.
 2. **Online-score cache** — `.api_cache.json` entries `{played, at}` with a
    **7-day TTL**, crash-safe (persisted every 20), ~0.4s between calls.
 3. **HTTP** — `/api/library` has an `ETag` covering file + content state

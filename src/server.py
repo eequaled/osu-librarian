@@ -198,8 +198,10 @@ def _db_only_rows(paths: dict) -> list:
 
 
 def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
-    from .lazer_scanner import load_realm_export, parse_lazer_blob, scan_lazer
-    fp_new = cachemod.fingerprint_lazer(paths["lazer_dir"])
+    from .lazer_scanner import (_is_osu_blob, load_realm_export, parse_lazer_blob)
+    lazer_dir = paths.get("lazer_dir", "") or ""
+    files_dir = os.path.join(lazer_dir, "files")
+    fp_new = cachemod.fingerprint_lazer(lazer_dir)
     old_keys, old_rows, old_fp = cachemod.load_scan("lazer") if not fresh else ([], [], {})
     realm = {"played_ids": set(), "played_md5": set(), "stars": {},
              "grades": {}, "statuses": {}, "dates": {}, "set_files": {}}
@@ -214,36 +216,54 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
         try:
             from .lazer_scanner import normalize_realm_dump
             from .realm_export import export_realm as _export_realm
-            dump = _export_realm(paths.get("lazer_dir", "") or "")
+            dump = _export_realm(lazer_dir)
             if isinstance(dump, dict):
                 realm = normalize_realm_dump(dump)
         except Exception:
             pass
+
+    def _blobs() -> list[str]:
+        out = []
+        if files_dir and os.path.isdir(files_dir):
+            for root, _d, names in os.walk(files_dir):
+                for n in names:
+                    p = os.path.join(root, n)
+                    if _is_osu_blob(p):
+                        out.append(p)
+        return sorted(out)
+
     if fresh or not old_rows or not old_fp:
-        maps = scan_lazer(paths["lazer_dir"], effective_export, _realm=realm)
-        job.total, job.done = len(maps), len(maps)
-        keys = _lazer_keys(paths["lazer_dir"], maps)
-        cachemod.save_scan("lazer", keys, to_dict_list(maps), fp_new)
-        return
-    unchanged, changed, _deleted, _dbs = cachemod.diff_fingerprints(old_fp, fp_new)
-    old_by_key = {k: r for k, r in zip(old_keys, old_rows) if k is not None}
-    job.total = len(fp_new["files"])
-    job.done = len(unchanged)
-    base = os.path.join(paths["lazer_dir"], "files")
-    new_keys = sorted(set(fp_new["files"]))
-    new_rows = []
-    for rel in new_keys:
-        if rel in old_by_key and rel not in changed:
-            new_rows.append(old_by_key[rel])
-            continue
-        full = os.path.join(base, rel)
-        try:
-            new_rows.append(parse_lazer_blob(full, realm).__dict__)
-        except OSError:
-            pass
-        job.done += 1
-    _carry_online(old_rows, new_rows)
-    cachemod.save_scan("lazer", new_keys, new_rows, fp_new)
+        blobs = _blobs()
+        job.total, job.done = len(blobs) or 1, 0
+        keys, rows = [], []
+        for full in blobs:
+            rel = os.path.relpath(full, files_dir)
+            keys.append(rel)
+            rows.append(parse_lazer_blob(full, realm).__dict__)
+            job.done += 1
+        _carry_online(old_rows, rows)
+    else:
+        _unchanged, changed, _deleted, _dbs = cachemod.diff_fingerprints(old_fp, fp_new)
+        old_by_key = {k: r for k, r in zip(old_keys, old_rows) if k is not None}
+        new_keys = sorted(set(fp_new["files"]))
+        job.total, job.done = len(new_keys) or 1, 0
+        keys, rows = [], []
+        for rel in new_keys:
+            old = old_by_key.get(rel)
+            if old is not None and rel not in changed:
+                keys.append(rel)
+                rows.append(old)
+            else:
+                full = os.path.join(files_dir, rel)
+                # Non-.osu blobs (audio/images) get no row; deleted files are
+                # dropped. done still ticks so progress never exceeds total.
+                if os.path.isfile(full) and _is_osu_blob(full):
+                    keys.append(rel)
+                    rows.append(parse_lazer_blob(full, realm).__dict__)
+            job.done += 1
+        _carry_online(old_rows, rows)
+    cachemod.save_scan("lazer", keys, rows, fp_new)
+    job.done = job.total
 
 
 def _lazer_keys(lazer_dir: str, maps) -> list:

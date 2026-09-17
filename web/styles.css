@@ -9,6 +9,7 @@ button, select, input { background: #222a3a; color: var(--fg); border: 1px solid
   border-radius: 6px; padding: 6px 10px; font-size: 14px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--acc); }
+button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, input:focus-visible, select:focus-visible, #list:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
 button[aria-pressed="true"], .mode-switch button.active { background: #2c3c66; border-color: var(--acc); }
 
