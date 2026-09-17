@@ -56,7 +56,7 @@ python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library
 ## OAuth setup (account link)
 
 1. Register an app at <https://osu.ppy.sh/home/account/edit> (OAuth section),
-   callback `http://localhost:8080/callback` → note `client_id` + `client_secret`.
+   callback `http://localhost:8787/api/auth/callback` → note `client_id` + `client_secret`.
 2. Put them in `settings.json` → `api` (+ your numeric `user_id` is optional;
    it is auto-detected on link).
 3. In the web app: **link account** → open authorize page → paste `?code=` → link.

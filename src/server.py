@@ -8,13 +8,16 @@ Endpoints (see docs/webui-spec.md for the contract):
   GET  /api/jobs/:id
   GET  /api/auth/url
   POST /api/auth/code           {code} -> {ok, user_id}
-  GET  /api/auth/status         {linked, user_id}
+  GET  /api/auth/callback       ?code=... (&error=...) -> HTML (OAuth redirect, auto-links)
+  POST /api/auth/config         {client_id, client_secret} -> {ok:true}
+  GET  /api/auth/status         {linked, user_id, username, redirect_uri, configured}
   POST /api/online-check        {} -> {job_id}
   POST /api/export              {ids, format} -> file download
 """
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import mimetypes
 import os
@@ -101,6 +104,40 @@ def valid_token(settings: Settings) -> str:
         except Exception:
             return ""
     return tok.get("access_token", "")
+
+
+def _finish_auth(code: str) -> tuple[bool, dict | str]:
+    """Exchange an OAuth code, persist the token, return (ok, payload_or_error).
+
+    On success payload is {"user_id": int, "username": str}; on failure the
+    second element is a human-readable error string (never includes secrets).
+    Shared by POST /api/auth/code (CLI compat) and GET /api/auth/callback.
+    """
+    from .osu_api import exchange_code, get_me
+    if not code:
+        return False, "missing code"
+    s = load_settings()
+    try:
+        tok = exchange_code(s.api.client_id, s.api.client_secret,
+                            s.api.redirect_uri, code)
+    except Exception as e:
+        return False, f"exchange failed: {e}"
+    if not isinstance(tok, dict):
+        return False, "exchange failed: bad response"
+    tok["obtained_at"] = time.time()
+    try:
+        me = get_me(tok.get("access_token", ""))
+    except Exception:
+        me = {}
+    if isinstance(me, dict) and me.get("id"):
+        try:
+            tok["user_id"] = int(me["id"])
+        except (TypeError, ValueError):
+            tok["user_id"] = me["id"]
+        tok["username"] = me.get("username", "")
+    _save_token(tok)
+    return True, {"user_id": tok.get("user_id", 0),
+                  "username": tok.get("username", "")}
 
 
 # ---- scans ----
@@ -343,6 +380,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_html(self, code: int, body: str):
+        data = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _read_json(self) -> dict:
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -371,10 +416,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, job.to_dict())
         if path == "/api/auth/url":
             return self._auth_url()
+        if path == "/api/auth/callback":
+            return self._auth_callback(parsed.query)
         if path == "/api/auth/status":
             tok = _load_token()
+            s = load_settings()
             return self._json(200, {"linked": bool(tok.get("access_token")),
-                                   "user_id": tok.get("user_id", 0)})
+                                   "user_id": tok.get("user_id", 0),
+                                   "username": tok.get("username", ""),
+                                   "redirect_uri": s.api.redirect_uri,
+                                   "configured": bool(s.api.client_id and s.api.client_secret)})
         if path == "/api/detect":
             from .detect import find_installs
             return self._json(200, {"installs": [i.to_dict() for i in find_installs()]})
@@ -398,6 +449,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"mode": mode})
         if path == "/api/auth/code":
             return self._auth_code(body.get("code", ""))
+        if path == "/api/auth/config":
+            return self._auth_config(body)
         if path == "/api/online-check":
             jid, err = run_online_check()
             if err:
@@ -433,7 +486,8 @@ class Handler(BaseHTTPRequestHandler):
                      "cached": bool(rows)},
             "jobs": {"active": registry.active()},
             "auth": {"linked": bool(tok.get("access_token")),
-                     "user_id": tok.get("user_id", 0)},
+                     "user_id": tok.get("user_id", 0),
+                     "username": tok.get("username", "")},
             "installs": [i.to_dict() for i in find_installs()],
         })
 
@@ -478,23 +532,72 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"url": authorize_url(s.api.client_id, s.api.redirect_uri)})
 
     def _auth_code(self, code: str):
-        from .osu_api import exchange_code, get_me
-        if not code:
-            return self._json(400, {"error": "missing code"})
-        s = load_settings()
+        ok, result = _finish_auth(code if isinstance(code, str) else "")
+        if not ok:
+            return self._json(400, {"error": result})
+        assert isinstance(result, dict)
+        return self._json(200, {"ok": True, "user_id": result.get("user_id", 0),
+                               "username": result.get("username", "")})
+
+    def _auth_config(self, body: dict):
+        from .config import save_settings
+        cid_raw = body.get("client_id", 0)
+        secret = body.get("client_secret", "")
         try:
-            tok = exchange_code(s.api.client_id, s.api.client_secret,
-                                s.api.redirect_uri, code)
-        except Exception as e:
-            return self._json(400, {"error": f"exchange failed: {e}"})
-        tok["obtained_at"] = time.time()
-        me = get_me(tok.get("access_token", ""))
-        if me.get("id"):
-            tok["user_id"] = me["id"]
-            tok["username"] = me.get("username", "")
-        _save_token(tok)
-        return self._json(200, {"ok": True, "user_id": tok.get("user_id", 0),
-                               "username": tok.get("username", "")})
+            cid = int(cid_raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "client_id must be a positive int"})
+        if cid <= 0:
+            return self._json(400, {"error": "client_id must be a positive int"})
+        if not isinstance(secret, str) or not secret:
+            return self._json(400, {"error": "client_secret must be non-empty"})
+        s = load_settings()
+        s.api.client_id = cid
+        s.api.client_secret = secret
+        save_settings(s)
+        return self._json(200, {"ok": True})
+
+    def _auth_callback(self, query: str):
+        qs = urllib.parse.parse_qs(query or "")
+        err = (qs.get("error", [""])[0] or "")
+        if err:
+            desc = (qs.get("error_description", [""])[0] or "")
+            detail = f": {desc}" if desc else ""
+            page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                    "<title>Authorization failed</title></head><body>"
+                    "<h1>Authorization failed</h1>"
+                    f"<p>Authorization failed/denied: {html.escape(err)}"
+                    f"{html.escape(detail)}</p>"
+                    "<p>You can close this tab and return to osu! Librarian.</p>"
+                    "</body></html>")
+            return self._send_html(400, page)
+        code = (qs.get("code", [""])[0] or "")
+        if not code:
+            page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                    "<title>Authorization failed</title></head><body>"
+                    "<h1>Authorization failed</h1>"
+                    "<p>missing code</p>"
+                    "<p>You can close this tab and return to osu! Librarian.</p>"
+                    "</body></html>")
+            return self._send_html(400, page)
+        ok, result = _finish_auth(code)
+        if ok:
+            assert isinstance(result, dict)
+            display = str(result.get("username") or result.get("user_id") or "")
+            page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                    "<title>Account linked</title></head><body>"
+                    f"<h1>Account linked as {html.escape(display)}</h1>"
+                    "<p>You can close this tab and return to osu! Librarian.</p>"
+                    "</body></html>")
+            return self._send_html(200, page)
+        reason = result if isinstance(result, str) else "link failed"
+        page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                "<title>Authorization failed</title></head><body>"
+                "<h1>Authorization failed</h1>"
+                f"<p>{html.escape(reason)}</p>"
+                "<p>You can close this tab and return to osu! Librarian.</p>"
+                "</body></html>")
+        return self._send_html(400, page)
 
     def _export(self, body: dict):
         from . import export as exportmod

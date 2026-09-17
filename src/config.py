@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 class ApiSettings:
     client_id: int = 0
     client_secret: str = ""
-    redirect_uri: str = "http://localhost:8080/callback"
+    redirect_uri: str = "http://localhost:8787/api/auth/callback"
     user_id: int = 0
 
 
@@ -94,7 +94,7 @@ def load_settings(path: str = "settings.json") -> Settings:
         api=ApiSettings(
             client_id=int(api.get("client_id", 0) or 0),
             client_secret=api.get("client_secret", ""),
-            redirect_uri=api.get("redirect_uri", "http://localhost:8080/callback"),
+            redirect_uri=api.get("redirect_uri", "http://localhost:8787/api/auth/callback"),
             user_id=int(api.get("user_id", 0) or 0),
         ),
     )

@@ -9,7 +9,7 @@
   "api": {
     "client_id": 0,
     "client_secret": "",
-    "redirect_uri": "http://localhost:8080/callback",
+    "redirect_uri": "http://localhost:8787/api/auth/callback",
     "user_id": 0
   }
 }
