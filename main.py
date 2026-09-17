@@ -146,7 +146,8 @@ def main() -> int:
     p.add_argument("--port", type=int, default=8787)
     p.set_defaults(fn=cmd_web)
 
-    p = sub.add_parser("check-online", help="mark online-played via API v2")    p.add_argument("--in", dest="in_path", default="library.json")
+    p = sub.add_parser("check-online", help="mark online-played via API v2")
+    p.add_argument("--in", dest="in_path", default="library.json")
     p.add_argument("--out", default="library.online.json")
     p.add_argument("--client-id", type=int, default=0)
     p.add_argument("--client-secret", default="")
