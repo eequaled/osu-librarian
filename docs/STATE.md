@@ -40,10 +40,11 @@ from the store, osu! API v2 account link + bulk online played check.
 ## Auth status
 - Server-side BYO flow works (user's own osu! app id 68736 saved in
   ~/osu-librarian/settings.json; secret lives ONLY there, never in repo).
-- One-click relay flow is BUILT but NOT deployed: needs public HTTPS relay +
-  `relay_url`/`relay_client_id` shipped in settings, + relay callback URL
-  registered on the osu! app. Local code + tests are done and verified
-  (fake-relay e2e); only ops remains.
+- One-click relay flow is DEPLOYED: https://osu-librarian-relay.onrender.com
+  (Render free, Docker, frankfurt, auto-deploy from GitHub main). Service id
+  srv-dam6vcf40ujc73a83kug. Shipped settings carry relay_url + relay_client_id
+  (68736). osu! app callback list must include
+  <relay-url>/auth/callback (localhost entry kept for BYO dev flow).
 - Relay Docker image validated locally (builds, /health + /pair OK). flyctl
   installed at ~/.fly/bin (not on PATH). runs-on.dev checked: subdomain
   registry only, NOT hosting — relay stays on Fly.io; claimed name usable as
