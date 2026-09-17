@@ -1,0 +1,23 @@
+# Minimal Fly.io config for the osu! OAuth relay (stdlib-only, see README.md).
+# Set secrets with: fly secrets set OSU_CLIENT_ID=… OSU_CLIENT_SECRET=… RELAY_PUBLIC_URL=https://<app>.fly.dev
+app = "osu-librarian-relay"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8099"
+
+[http_service]
+  internal_port = 8099
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
