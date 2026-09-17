@@ -122,6 +122,24 @@ class RelayCase(unittest.TestCase):
     def test_health(self):
         code, _headers, body = self._get_json("/health")
         self.assertEqual(code, 200)
+
+    def test_browser_cors_for_pair(self):
+        """The localhost app calls /pair cross-origin: preflight + ACAO needed."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            conn.request("OPTIONS", "/pair", headers={"Origin": "http://localhost:8787"})
+            resp = conn.getresponse()
+            headers = dict(resp.getheaders())
+            resp.read()
+        finally:
+            conn.close()
+        self.assertEqual(resp.status, 204)
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
+        req = urllib.request.Request(self._base() + "/pair", data=b"", method="POST",
+                                     headers={"Origin": "http://localhost:8787"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            self.assertEqual(r.headers.get("Access-Control-Allow-Origin"), "*")
+            self.assertIn("ticket", json.loads(r.read().decode()))
         self.assertEqual(json.loads(body.decode()), {"ok": True})
 
     def test_pair_callback_token_happy_path_one_time(self):

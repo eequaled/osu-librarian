@@ -100,7 +100,12 @@ function showJob(label, jobPromise, onDone) {
   box.hidden = false;
   return jobPromise.then(
     (j) => {
-      box.hidden = true;
+      // Show a clear "done" state, then get out of the way.
+      $("job-label").textContent = `${label} complete`;
+      $("job-bar").value = 100;
+      setTimeout(() => {
+        box.hidden = true;
+      }, 2500);
       onDone?.(j);
     },
     (e) => {
