@@ -1,7 +1,8 @@
 # osu! Librarian — project state (for future sessions)
 
 Last updated: 2026-09-17. Branch: main. Stack: Python 3.14 stdlib-only backend,
-vanilla-JS no-build frontend. 83 backend tests + 9 relay tests, all green.
+vanilla-JS no-build frontend. 209 backend test methods (49 files) + 59 relay
+test methods (12 files).
 
 ## What it is
 Local web app (http://localhost:8787) that manages downloaded osu! libraries:
@@ -47,8 +48,9 @@ from the store, osu! API v2 account link + bulk online played check.
   <relay-url>/auth/callback (localhost entry kept for BYO dev flow).
 - Relay Docker image validated locally (builds, /health + /pair OK). flyctl
   installed at ~/.fly/bin (not on PATH). runs-on.dev checked: subdomain
-  registry only, NOT hosting — relay stays on Fly.io; claimed name usable as
-  vanity CNAME later if wanted.
+  registry only, NOT hosting — relay stays on Render (canonical host,
+  render.yaml); relay/fly.toml is kept as a fallback deploy target.
+  Claimed name usable as vanity CNAME later if wanted.
 - Known open product question from user history: librarian unplayed (3535) vs
   lazer "by rank" unplayed (3025) — believed to be 510 online-only scores;
   online check after linking should confirm. Sidebar now splits local/online.
