@@ -10,6 +10,22 @@ export function isPlayed(m) {
   return !!(m.played_local || m.played_online);
 }
 
+/* Star slider: dragging fires input per pixel, so main.js repaints the label
+ * immediately but debounces the full filter+sort+persist rebuild by this long. */
+export const STAR_REBUILD_DEBOUNCE_MS = 175;
+
+/* Clamp a crossed dual-range pair: the handle being dragged wins. Pure so the
+ * slider math stays testable without DOM. changed is "min", "max", or "". */
+export function resolveStarRange(lo, hi, changed) {
+  lo = Number(lo);
+  hi = Number(hi);
+  if (lo > hi) {
+    if (changed === "min") hi = lo;
+    else lo = hi;
+  }
+  return [lo, hi];
+}
+
 export function searchBlob(m) {
   return [m.artist, m.title, m.creator, m.diff, m.source, m.tags,
           String(m.beatmap_id ?? "")].join(" ").toLowerCase();

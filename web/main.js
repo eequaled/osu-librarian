@@ -2,7 +2,8 @@
 import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
-import { buildRows, defaultFilters, loadPrefs, savePrefs, summarize } from "./store.js";
+import { buildRows, defaultFilters, loadPrefs, resolveStarRange, savePrefs,
+         STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
 const state = {
@@ -239,17 +240,24 @@ function bindStars() {
     $("sval").textContent = `${lo} – ${hi >= 10 ? "∞" : hi}`;
   };
   paint();
+  // Dragging fires input per pixel: repaint the label now, but debounce the
+  // full filter+sort+localStorage rebuild until the handle settles.
+  let starDeb = 0;
   const onInput = (ev) => {
-    let lo = parseFloat(minR.value), hi = parseFloat(maxR.value);
-    if (lo > hi) {
-      if (ev.target === minR) { hi = lo; maxR.value = String(hi); }
-      else { lo = hi; minR.value = String(lo); }
-    }
+    const [lo, hi] = resolveStarRange(
+      parseFloat(minR.value), parseFloat(maxR.value),
+      ev.target === minR ? "min" : "max",
+    );
+    minR.value = String(lo);
+    maxR.value = String(hi);
     f.smin = lo;
     f.smax = hi >= 10 ? 99 : hi;
     paint();
-    state.activeIdx = -1;
-    refresh();
+    clearTimeout(starDeb);
+    starDeb = setTimeout(() => {
+      state.activeIdx = -1;
+      refresh();
+    }, STAR_REBUILD_DEBOUNCE_MS);
   };
   minR.addEventListener("input", onInput);
   maxR.addEventListener("input", onInput);
