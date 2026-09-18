@@ -1,5 +1,11 @@
 # WebUI Build Spec — osu! Librarian
 
+> HISTORICAL — this spec predates the mode switch details, install
+> auto-detect, relay linking, and several newer endpoints. It is kept for
+> context only: the canonical API contract is the `src/server.py` docstring.
+> Sections marked SUPERSEDED below note what changed; the original text is
+> left in place.
+
 ## 0. Goal
 
 Replace `report.py` (static dump) and `app_tk.py` (desktop) with a **local web app**
