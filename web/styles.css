@@ -114,6 +114,11 @@ dialog p { line-height: 1.6; }
 .recon-bucket .recon-label { font-size: 13px; }
 .recon-bucket .recon-value { font-weight: bold; }
 .recon-formula td { color: var(--dim); }
+.sc-scope { margin: 8px 0; }
+.sc-table { width: 100%; border-collapse: collapse; }
+.sc-table td { padding: 3px 6px; }
+.sc-table kbd { background: rgba(255,255,255,.08); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 6px; font-size: 12px; }
 
 .skel { color: var(--dim); padding: 20px; }
 .empty { padding: 40px 20px; text-align: center; color: var(--dim); }

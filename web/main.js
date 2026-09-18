@@ -5,6 +5,7 @@ import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { initReconcile } from "./reconcile.js";
+import { initShortcuts, shortcutsHtml, toggleShortcutsDialog } from "./shortcuts.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
 const state = {
@@ -320,6 +321,16 @@ function bindSelAll() {
 
 function bindKeyboard() {
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "?" && !ev.ctrlKey && !ev.altKey && !ev.metaKey
+        && document.activeElement !== $("q")
+        && document.activeElement?.tagName !== "INPUT"
+        && document.activeElement?.tagName !== "TEXTAREA") {
+      ev.preventDefault();
+      const dlg = $("shortcuts-dialog");
+      if (dlg && !dlg.open) dlg.__returnFocus = document.activeElement;
+      toggleShortcutsDialog();
+      return;
+    }
     if (ev.key === "Escape" && document.activeElement === $("q")) {
       $("q").blur();
       return;
@@ -584,6 +595,9 @@ function main() {
   });
   initAuth(() => boot());
   setupAuthDialogFocus();
+  initShortcuts();
+  const scBody = $("shortcuts-body");
+  if (scBody) scBody.innerHTML = shortcutsHtml();
   initReconcile({
     getPlayed: () => state.filters.played,
     setPlayedFilter: (value) => {
