@@ -172,6 +172,31 @@ def _bucket_limited(key: str, now: float) -> bool:
     return False
 
 
+def _retry_after_seconds(key: str, now: float) -> int:
+    """Seconds until the rate-limit window for `key` resets (ceil, >= 1).
+
+    Caller must hold _lock. Falls back to RATE_LIMIT_WINDOW when the
+    bucket is empty or unreadable.
+    """
+    try:
+        seen = [t for t in _rate.get(key, []) if now - t < RATE_LIMIT_WINDOW]
+    except Exception:
+        return RATE_LIMIT_WINDOW
+    if not seen:
+        return RATE_LIMIT_WINDOW
+    try:
+        reset_in = min(seen) + RATE_LIMIT_WINDOW - now
+    except Exception:
+        return RATE_LIMIT_WINDOW
+    try:
+        secs = int(reset_in)
+        if secs < reset_in:
+            secs += 1
+    except Exception:
+        return RATE_LIMIT_WINDOW
+    return max(1, secs)
+
+
 def get_config() -> tuple[str, str, str, int]:
     """Return (client_id, client_secret, public_url, port) from env."""
     client_id = os.environ.get("OSU_CLIENT_ID", "").strip()
@@ -517,12 +542,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- low-level senders --
 
-    def _send_json(self, code: int, obj: dict, allow_cors: bool = False) -> None:
+    def _send_json(self, code: int, obj: dict, allow_cors: bool = False,
+                   retry_after: int | None = None) -> None:
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if retry_after is not None:
+            try:
+                self.send_header("Retry-After", str(max(1, int(retry_after))))
+            except (TypeError, ValueError):
+                pass
         # Browsers call POST /pair cross-origin (localhost app -> public relay).
         # Only /pair needs ACAO:* — /token carries bearer tokens and must
         # never be readable cross-origin.
@@ -635,7 +666,11 @@ class Handler(BaseHTTPRequestHandler):
         now = _now()
         with _lock:
             if _bucket_limited(ip, now):
-                return self._send_json(429, {"error": "rate_limited"}, allow_cors=True)
+                retry_after = _retry_after_seconds(ip, now)
+                return self._send_json(
+                    429,
+                    {"error": "rate_limited", "retry_after": retry_after},
+                    allow_cors=True, retry_after=retry_after)
             while len(_tickets) >= MAX_TICKETS:
                 try:
                     oldest = min(
@@ -666,7 +701,11 @@ class Handler(BaseHTTPRequestHandler):
         now = _now()
         with _lock:
             if _bucket_limited(f"callback:{ip}", now):
-                return self._send_json(429, {"error": "rate_limited"})
+                retry_after = _retry_after_seconds(f"callback:{ip}", now)
+                return self._send_json(
+                    429,
+                    {"error": "rate_limited", "retry_after": retry_after},
+                    retry_after=retry_after)
         qs = urllib.parse.parse_qs(query or "", keep_blank_values=True)
         code = (qs.get("code", [""])[0] or "").strip()
         state = (qs.get("state", [""])[0] or "").strip()
@@ -700,7 +739,18 @@ class Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 attempts = 0
             if attempts >= CALLBACK_TICKET_MAX_ATTEMPTS:
-                return self._send_json(429, {"error": "rate_limited"})
+                try:
+                    reset_in = float(entry.get("created_at", 0)) + TICKET_TTL - now
+                    retry_after = int(reset_in)
+                    if retry_after < reset_in:
+                        retry_after += 1
+                    retry_after = max(1, retry_after)
+                except (TypeError, ValueError):
+                    retry_after = TICKET_TTL
+                return self._send_json(
+                    429,
+                    {"error": "rate_limited", "retry_after": retry_after},
+                    retry_after=retry_after)
             entry["attempts"] = attempts + 1
 
         client_id, client_secret, public_url, _port = get_config()
@@ -779,7 +829,11 @@ class Handler(BaseHTTPRequestHandler):
         now = _now()
         with _lock:
             if _bucket_limited(f"token:{ip}", now):
-                return self._send_json(429, {"error": "rate_limited"})
+                retry_after = _retry_after_seconds(f"token:{ip}", now)
+                return self._send_json(
+                    429,
+                    {"error": "rate_limited", "retry_after": retry_after},
+                    retry_after=retry_after)
         qs = urllib.parse.parse_qs(query or "", keep_blank_values=True)
         ticket = (qs.get("ticket", [""])[0] or "").strip()
         if not _is_hex_ticket(ticket):
@@ -845,12 +899,16 @@ class Handler(BaseHTTPRequestHandler):
         now = _now()
         with _lock:
             if _bucket_limited(f"token:{ip}", now):
+                retry_after = _retry_after_seconds(f"token:{ip}", now)
                 # Drain body to keep keep-alive in sync (bounded).
                 try:
                     self._discard_body_for_token()
                 except Exception:
                     pass
-                return self._send_json(429, {"error": "rate_limited"})
+                return self._send_json(
+                    429,
+                    {"error": "rate_limited", "retry_after": retry_after},
+                    retry_after=retry_after)
         ticket = self._read_token_ticket_from_body()
         if not _is_hex_ticket(ticket):
             # Fall back to query string for convenience; body is primary.
