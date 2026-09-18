@@ -26,6 +26,24 @@ export function resolveStarRange(lo, hi, changed) {
   return [lo, hi];
 }
 
+/* Single-pass visible/selected counter for the select-all checkbox: walks rows
+ * once instead of building an id list and filtering it afterwards. */
+export function countVisibleSelection(rows, selection) {
+  let total = 0, sel = 0;
+  for (const r of rows) {
+    if (r.type === "map") {
+      total++;
+      if (selection.has(r.map.id)) sel++;
+    } else {
+      for (const m of r.set.maps) {
+        total++;
+        if (selection.has(m.id)) sel++;
+      }
+    }
+  }
+  return { total, sel };
+}
+
 export function searchBlob(m) {
   return [m.artist, m.title, m.creator, m.diff, m.source, m.tags,
           String(m.beatmap_id ?? "")].join(" ").toLowerCase();

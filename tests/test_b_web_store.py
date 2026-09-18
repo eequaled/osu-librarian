@@ -15,7 +15,17 @@ import("./web/store.js").then(s => {
     crossedMax: s.resolveStarRange(7, 5, "max"),
     crossedUnk: s.resolveStarRange(7, 5, ""),
     normal: s.resolveStarRange(2, 8, "min"),
-    equal: s.resolveStarRange(5, 5, "max")
+    equal: s.resolveStarRange(5, 5, "max"),
+    countMixed: s.countVisibleSelection([
+      { type: "map", map: { id: 1 } },
+      { type: "set", set: { maps: [{ id: 2 }, { id: 3 }] } },
+      { type: "map", map: { id: 4 } }
+    ], new Set([1, 3])),
+    countEmpty: s.countVisibleSelection([], new Set([1])),
+    countAll: s.countVisibleSelection([
+      { type: "map", map: { id: 1 } },
+      { type: "set", set: { maps: [{ id: 2 }] } }
+    ], new Set([1, 2]))
   };
   console.log(JSON.stringify(out));
 }).catch(e => { console.error(e); process.exit(1); });
@@ -36,6 +46,9 @@ class StoreHelperTests(unittest.TestCase):
         self.assertEqual(out["crossedUnk"], [5, 5])
         self.assertEqual(out["normal"], [2, 8])
         self.assertEqual(out["equal"], [5, 5])
+        self.assertEqual(out["countMixed"], {"total": 4, "sel": 2})
+        self.assertEqual(out["countEmpty"], {"total": 0, "sel": 0})
+        self.assertEqual(out["countAll"], {"total": 2, "sel": 2})
 
 
 if __name__ == "__main__":

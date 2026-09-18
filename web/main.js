@@ -2,7 +2,7 @@
 import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
-import { buildRows, defaultFilters, loadPrefs, resolveStarRange, savePrefs,
+import { buildRows, countVisibleSelection, defaultFilters, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
@@ -266,11 +266,10 @@ function bindStars() {
 function paintSelAll() {
   const box = $("sel-all"), label = $("list-meta-text");
   if (!box || !label) return;
-  const vis = visibleIds();
-  const sel = vis.filter((id) => state.selection.has(id)).length;
-  label.textContent = `${vis.length} of ${state.maps.length} shown`;
-  box.checked = vis.length > 0 && sel === vis.length;
-  box.indeterminate = sel > 0 && sel < vis.length;
+  const { total, sel } = countVisibleSelection(state.rows, state.selection);
+  label.textContent = `${total} of ${state.maps.length} shown`;
+  box.checked = total > 0 && sel === total;
+  box.indeterminate = sel > 0 && sel < total;
 }
 
 function bindSelAll() {
