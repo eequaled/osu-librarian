@@ -582,9 +582,10 @@ class Handler(BaseHTTPRequestHandler):
         if not n:
             return {}
         try:
-            return json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            parsed = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
         except ValueError:
             return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -631,6 +632,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         body = self._read_json()
+        if not isinstance(body, dict):
+            body = {}
         if path == "/api/scan":
             mode = body.get("mode") or get_mode()
             if mode not in ("stable", "lazer"):
