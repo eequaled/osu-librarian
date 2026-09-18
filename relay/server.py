@@ -175,7 +175,7 @@ def _bucket_limited(key: str, now: float) -> bool:
 def get_config() -> tuple[str, str, str, int]:
     """Return (client_id, client_secret, public_url, port) from env."""
     client_id = os.environ.get("OSU_CLIENT_ID", "").strip()
-    client_secret = os.environ.get("OSU_CLIENT_SECRET", "")
+    client_secret = os.environ.get("OSU_CLIENT_SECRET", "").strip()
     public_url = os.environ.get("RELAY_PUBLIC_URL", "").strip().rstrip("/")
     try:
         port = int(os.environ.get("PORT", "8099") or "8099")
