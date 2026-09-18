@@ -342,7 +342,7 @@ def _scan_stable_incremental(job, paths: dict, fresh: bool) -> None:
         rows = [r for r in rows if r is not None]
         keys = [k for k, r in zip(keys, [fresh_rows.get(rel, old_by_key.get(rel)) for rel in keys]) if r is not None]
         _carry_online(old_rows, rows)
-    for b in _db_only_rows(paths):
+    for b in _db_only_rows(paths, list(db.values()), scores):
         keys.append(None)
         rows.append(b.__dict__)
     _carry_online(old_rows, rows)
@@ -350,23 +350,30 @@ def _scan_stable_incremental(job, paths: dict, fresh: bool) -> None:
     job.done = job.total
 
 
-def _db_only_rows(paths: dict) -> list:
-    """Entries from osu!.db with no file on disk (cheap: db read only)."""
+def _db_only_rows(paths: dict, dbmaps=None, score_map=None) -> list:
+    """Entries from osu!.db with no file on disk (cheap: db read only).
+
+    dbmaps/score_map are the already-loaded scan inputs: passing them avoids
+    re-reading osu!.db + scores.db a second time per stable scan. When omitted
+    (None) they are read from disk as before.
+    """
     from .stable_scanner import _played_from_db  # noqa
     from .stable_db import GRADE_NAMES, RANKED_NAMES, read_osu_db
     from .library import Beatmap
     from .osu_parser import mode_name
-    try:
-        _, dbmaps = read_osu_db(paths["osu_db"])
-    except (OSError, ValueError):
-        return []
+    if dbmaps is None:
+        try:
+            _, dbmaps = read_osu_db(paths["osu_db"])
+        except (OSError, ValueError):
+            return []
+    if score_map is None:
+        from .stable_scanner import load_score_map
+        score_map = load_score_map(paths["scores_db"])
     import glob as _glob
     on_disk = set()
     if paths["songs_dir"] and os.path.isdir(paths["songs_dir"]):
         for p in _glob.glob(os.path.join(_glob.escape(paths["songs_dir"]), "*", "*.osu")):
             on_disk.add(os.path.basename(p))
-    from .stable_scanner import load_score_map
-    score_map = load_score_map(paths["scores_db"])
     out = []
     for m in dbmaps:
         if m.osu_file in on_disk:
