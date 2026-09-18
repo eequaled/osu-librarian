@@ -810,18 +810,24 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def _library(self):
+        # NOTE: the whole library ships unpaged here (can be multi-MB); full
+        # paging is out of scope. Private revalidation + ETag keeps polling
+        # cheap via conditional 304s.
         _keys, rows, fp = cachemod.load_scan(get_mode())
         rows = _clean_rows(rows)
         version = _version(rows, fp) if fp else "empty"
-        if self.headers.get("If-None-Match") == f'"{version}"':
+        etag = f'"{version}"'
+        if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "private, no-cache")
             self.end_headers()
             return
         body = json.dumps({"version": version, "maps": rows}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("ETag", f'"{version}"')
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "private, no-cache")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
