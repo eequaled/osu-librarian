@@ -47,6 +47,8 @@
     </select>
     <h2>Shortcuts</h2>
     <p class="hint">/ search · ↑↓ move · space select · shift+click range</p>
+    <h2>Counts</h2>
+    <button id="reconcile-btn">reconcile played counts</button>
   </aside>
 
   <main class="main">
@@ -128,6 +130,12 @@
 
 <div id="toasts" aria-live="polite"></div>
 
-<script type="module" src="/main.js?v=2"></script>
+<script type="module" src="/main.js?v=3"></script>
+
+<dialog id="reconcile-dialog" aria-labelledby="reconcile-title">
+  <h3 id="reconcile-title">Played counts — local vs online</h3>
+  <div id="reconcile-body" aria-live="polite">loading…</div>
+  <p><button id="reconcile-close">close</button></p>
+</dialog>
 </body>
 </html>

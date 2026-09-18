@@ -4,6 +4,7 @@ import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
+import { initReconcile } from "./reconcile.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
 const state = {
@@ -583,6 +584,18 @@ function main() {
   });
   initAuth(() => boot());
   setupAuthDialogFocus();
+  initReconcile({
+    getPlayed: () => state.filters.played,
+    setPlayedFilter: (value) => {
+      state.filters.played = value;
+      const sel = $("played");
+      if (sel) sel.value = value;
+      state.activeIdx = -1;
+      refresh();
+    },
+    startOnlineCheck,
+  });
+  $("reconcile-close")?.addEventListener("click", () => $("reconcile-dialog").close());
 
   bindFilters();
   bindKeyboard();

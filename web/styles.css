@@ -103,6 +103,17 @@ dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--lin
 dialog::backdrop { background: rgba(0,0,0,.6); }
 dialog p { line-height: 1.6; }
 #auth-dialog { width: 100%; max-width: 520px; box-sizing: border-box; }
+#reconcile-dialog { width: 100%; max-width: 460px; box-sizing: border-box; }
+.recon-grid { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.recon-grid td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.recon-bucket { display: flex; gap: 8px; align-items: baseline; width: 100%;
+  justify-content: space-between; background: transparent; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.recon-bucket:hover { border-color: var(--acc); }
+.recon-bucket.active { border-color: var(--acc); background: rgba(255,255,255,.06); }
+.recon-bucket .recon-label { font-size: 13px; }
+.recon-bucket .recon-value { font-weight: bold; }
+.recon-formula td { color: var(--dim); }
 
 .skel { color: var(--dim); padding: 20px; }
 .empty { padding: 40px 20px; text-align: center; color: var(--dim); }
