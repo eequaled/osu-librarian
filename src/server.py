@@ -846,8 +846,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "format must be json|txt|collection"})
         s = load_settings()
         _keys, rows, _fp = cachemod.load_scan(get_mode())
-        want = set(body.get("ids", []))
-        sel = [r for r in rows if r.get("id") in want] if want else rows
+        # missing/None `ids` means the whole library; [] means empty export.
+        ids = body.get("ids")
+        if ids is None:
+            sel = rows
+        else:
+            if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids):
+                return self._json(400, {"error": "ids must be a list of str"})
+            want = set(ids)
+            sel = [r for r in rows if isinstance(r, dict) and r.get("id") in want]
         if fmt == "collection":
             payload = exportmod.to_collection_db(sel, body.get("name", "Librarian Export"))
         else:
