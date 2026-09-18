@@ -6,13 +6,14 @@ import argparse
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.config import load_settings  # noqa: E402
 from src.lazer_scanner import scan_lazer  # noqa: E402
 from src.library import from_dict_list, summarize, to_dict_list  # noqa: E402
-from src.osu_api import authorize_url, client_credentials, exchange_code, mark_online_played  # noqa: E402
+from src.osu_api import authorize_url, client_credentials, exchange_code, get_me, mark_online_played  # noqa: E402
 from src.report import build_report  # noqa: E402
 from src.stable_scanner import scan_stable  # noqa: E402
 
@@ -74,12 +75,24 @@ def cmd_auth(a) -> int:
     code = (a.code or input("2) paste code: ").strip())
     sec = a.client_secret or s.api.client_secret
     tok = exchange_code(cid, sec, redir, code)
-    print("\naccess token OK. Add to your API calls; refresh_token below (keep secret):")
-    print(json.dumps({k: tok.get(k) for k in ("access_token", "refresh_token", "expires_in")}, indent=1)[:400] + "…")
+    obtained_at = time.time()
+    if isinstance(tok, dict):
+        tok["obtained_at"] = obtained_at
+    try:
+        me = get_me(tok.get("access_token", "") if isinstance(tok, dict) else "")
+        uid = me.get("id", 0) if isinstance(me, dict) else 0
+    except Exception:
+        uid = 0
+    if not uid and isinstance(tok, dict):
+        try:
+            uid = int(tok.get("user_id", 0) or 0)
+        except (TypeError, ValueError):
+            uid = tok.get("user_id", 0)
     if a.save_token:
         with open(a.save_token, "w", encoding="utf-8") as f:
             json.dump(tok, f, indent=1)
-        print(f"saved -> {a.save_token}")
+        print(f"saved -> {a.save_token} (token saved, not printed)")
+    print(f"auth OK user_id={uid} obtained_at={obtained_at}")
     return 0
 
 
