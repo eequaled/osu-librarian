@@ -82,7 +82,27 @@ export function initAuth(onLinked) {
     }
     // Show the server's actual callback URL (correct on any port/config).
     if (st.redirect_uri) callbackInput.value = st.redirect_uri;
+    renderAccountChip(st);
     return st;
+  }
+
+  async function checkLinkedAndNotify() {
+    const st = await refreshStatus();
+    if (st?.linked) {
+      try {
+        onLinked?.(await status().catch(() => st));
+      } catch { /* status reload is best-effort */ }
+    }
+    return st;
+  }
+
+  function chipLinked() {
+    return !!document.getElementById("account-chip")?.classList.contains("linked");
+  }
+
+  async function maybeRefreshOnReturn() {
+    if (chipLinked()) return;
+    await checkLinkedAndNotify();
   }
 
   function startPolling() {
@@ -114,6 +134,22 @@ export function initAuth(onLinked) {
   });
   dialog.addEventListener("close", stopPolling);
   document.getElementById("auth-close").addEventListener("click", () => dialog.close());
+  // Relay return lands in another tab: the dialog may already be closed, so the
+  // main chip would stay stale. Re-check whenever the user comes back while
+  // still showing unlinked.
+  window.addEventListener("focus", () => {
+    maybeRefreshOnReturn().catch(() => {});
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") maybeRefreshOnReturn().catch(() => {});
+  });
+  // Relay-return page (if it posts a message) wakes us immediately.
+  window.addEventListener("message", (ev) => {
+    const origin = String(ev.origin || "");
+    if (!origin.startsWith("http://127.0.0.1") && !origin.startsWith("http://localhost")) return;
+    if (!ev.data || ev.data.type !== "osu-librarian-linked") return;
+    checkLinkedAndNotify().catch(() => {});
+  });
 
   if (relayBtn) {
     relayBtn.addEventListener("click", async () => {
