@@ -24,6 +24,7 @@ import json
 import mimetypes
 import os
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -197,15 +198,28 @@ def _persist_token(tok: dict) -> tuple[bool, dict | str]:
         me = get_me(tok.get("access_token", ""))
     except Exception:
         me = {}
+    if not (isinstance(me, dict) and me.get("id")):
+        try:
+            me = get_me(tok.get("access_token", ""))
+        except Exception:
+            me = {}
     if isinstance(me, dict) and me.get("id"):
         try:
             tok["user_id"] = int(me["id"])
         except (TypeError, ValueError):
             tok["user_id"] = me["id"]
         tok["username"] = me.get("username", "")
+        _save_token(tok)
+        return True, {"user_id": tok.get("user_id", 0),
+                      "username": tok.get("username", "")}
+    try:
+        print("warning: linked without identity (get_me failed)", file=sys.stderr)
+    except Exception:
+        pass
     _save_token(tok)
     return True, {"user_id": tok.get("user_id", 0),
-                  "username": tok.get("username", "")}
+                  "username": tok.get("username", ""),
+                  "linked_without_identity": True}
 
 
 def _finish_auth(code: str) -> tuple[bool, dict | str]:
@@ -880,9 +894,13 @@ class Handler(BaseHTTPRequestHandler):
             return _fail(reason)
         assert isinstance(result, dict)
         display = str(result.get("username") or result.get("user_id") or "")
+        extra = ""
+        if result.get("linked_without_identity"):
+            extra = "<p>Linked without account identity. Reopen osu! Librarian to refresh.</p>"
         page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
                 "<title>Account linked</title></head><body>"
                 f"<h1>Account linked as {html.escape(display)}</h1>"
+                f"{extra}"
                 "<p>Account linked. Close this tab and return to osu! Librarian.</p>"
                 "<script>try{if(window.opener){window.opener.postMessage({type:\"osu-librarian-linked\"},location.origin);}}catch(e){}</script>"
                 "</body></html>")
