@@ -259,7 +259,7 @@ def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
             try:
                 body = json.loads(r.read().decode("utf-8") or "null")
             except ValueError:
-                return False, "link failed: bad relay response"
+                return False, "link failed: bad relay response — check your connection and retry"
     except urllib.error.HTTPError as e:
         try:
             e.read()
@@ -270,11 +270,11 @@ def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
                 e.close()
             except Exception:
                 pass
-        return False, "link failed: link expired or already used"
+        return False, "link failed: link expired or already used — click the link again to get a fresh link"
     except Exception:
-        return False, "link failed: linking service unreachable or link expired"
+        return False, "link failed: linking service unreachable — check your connection and retry"
     if not isinstance(body, dict) or not body.get("access_token"):
-        return False, "link failed: link expired or already used"
+        return False, "link failed: link expired or already used — click the link again to get a fresh link"
     return True, body
 
 
@@ -848,10 +848,17 @@ class Handler(BaseHTTPRequestHandler):
         ticket = (qs.get("ticket", [""])[0] or "")
 
         def _fail(reason: str):
+            if "unreachable" in reason or "bad relay response" in reason:
+                hint = "<p>Check your connection and retry.</p>"
+            elif "expired or already used" in reason:
+                hint = "<p>This link expired or was already used. Click the link again to get a fresh link.</p>"
+            else:
+                hint = ""
             page = ("<!doctype html><html><head><meta charset=\"utf-8\">"
                     "<title>Authorization failed</title></head><body>"
                     "<h1>Authorization failed</h1>"
                     f"<p>{html.escape(reason)}</p>"
+                    f"{hint}"
                     "<p>You can close this tab and return to osu! Librarian.</p>"
                     "<script>try{if(window.opener){window.opener.postMessage({type:\"osu-librarian-linked\"},location.origin);}}catch(e){}</script>"
                     "</body></html>")
