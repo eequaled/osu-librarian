@@ -20,6 +20,11 @@ from src.stable_scanner import scan_stable  # noqa: E402
 
 def cmd_scan(a) -> int:
     s = load_settings()
+    fresh = getattr(a, "fresh", True)
+    if not fresh:
+        print("[warn] --no-fresh is accepted for API parity but the CLI scan "
+              "is always a full scan; ignoring",
+              file=sys.stderr)
     mode = a.mode or s.mode
     if mode == "lazer":
         lazer_dir = a.lazer_dir or s.lazer_dir
@@ -144,6 +149,12 @@ def main() -> int:
     p.add_argument("--lazer-dir", default="")
     p.add_argument("--realm-export", default="")
     p.add_argument("--out", default="library.json")
+    p.add_argument("--fresh", dest="fresh", action="store_true", default=True,
+                   help="force a full rescan (the CLI scan is always full; "
+                        "kept for parity with POST /api/scan {fresh})")
+    p.add_argument("--no-fresh", dest="fresh", action="store_false",
+                   help="accepted for API parity; the CLI scan is always a "
+                        "full scan, so this flag is ignored with a warning")
     p.set_defaults(fn=cmd_scan)
 
     p = sub.add_parser("report", help="library.json -> filterable HTML")
