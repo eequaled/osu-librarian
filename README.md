@@ -59,7 +59,9 @@ python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library
    callback `http://localhost:8787/api/auth/callback` → note `client_id` + `client_secret`.
 2. Put them in `settings.json` → `api` (+ your numeric `user_id` is optional;
    it is auto-detected on link).
-3. In the web app: **link account** → open authorize page → paste `?code=` → link.
+3. In the web app: **link account** → one-click authorize (relay) or open the
+   authorize page and approve; the localhost callback auto-links when the app
+   is running.
    CLI alternative: `python3 main.py auth --client-id … --client-secret … --save-token .token.json`,
    then `python3 main.py check-online --in library.json --token …`.
 

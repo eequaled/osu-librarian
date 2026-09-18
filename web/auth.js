@@ -78,6 +78,7 @@ export function initAuth(onLinked) {
   const relayBtn = document.getElementById("auth-relay-open");
   const relayHint = document.getElementById("auth-relay-hint");
   let pollTimer = 0;
+  let pollBusy = false; // skip a tick while the previous status fetch runs
   let relayUrl = "";
   let relayClientId = 0;
   // Status fetch failed: buttons keep their last-known state (a failed fetch
@@ -151,7 +152,13 @@ export function initAuth(onLinked) {
       if (relayHint && deadline) relayHint.textContent = formatPairCountdown(deadline - Date.now());
     };
     tickHint();
+    if (relayHint) {
+      relayHint.textContent += " — keep this dialog open; closing pauses the link check";
+    }
     pollTimer = setInterval(async () => {
+      if (pollBusy) return; // previous tick's fetch still in flight
+      pollBusy = true;
+      try {
       if (deadline && Date.now() >= deadline) {
         stopPolling();
         if (relayHint) relayHint.textContent = "link expired, try again";
@@ -175,6 +182,9 @@ export function initAuth(onLinked) {
         onLinked?.(await status().catch(() => st));
       } else {
         tickHint();
+      }
+      } finally {
+        pollBusy = false;
       }
     }, 2000);
   }
@@ -218,6 +228,11 @@ export function initAuth(onLinked) {
             method: "POST",
           });
           const data = await r.json().catch(() => ({}));
+          if (r.status === 429) {
+            const wait = Number(data?.retry_after) || 60;
+            toast(`too many link attempts — try again in ~${wait}s`, "error");
+            return;
+          }
           if (!r.ok || !data.ticket) throw new Error(data.error || `pair ${r.status}`);
           ticket = data.ticket;
           ttlMs = pairTtlMs(data.expires_in ?? data.expiresIn);
@@ -280,7 +295,11 @@ export function initAuth(onLinked) {
 export function renderAccountChip(auth) {
   const chip = document.getElementById("account-chip");
   if (auth?.linked) {
-    chip.textContent = auth.user_id ? `linked · ${auth.user_id}` : "linked";
+    const who = auth.username
+      ? `${auth.username} (${auth.user_id})`
+      : (auth.user_id ? `linked · ${auth.user_id}` : "linked");
+    chip.textContent = who;
+    chip.title = who;
     chip.classList.add("linked");
   } else {
     chip.textContent = "not linked";

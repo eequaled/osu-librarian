@@ -91,17 +91,6 @@ export async function authUrl() {
   return data.url;
 }
 
-export async function submitCode(code) {
-  const r = await fetch("/api/auth/code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || `auth ${r.status}`);
-  return data;
-}
-
 export async function startOnlineCheck() {
   const r = await fetch("/api/online-check", { method: "POST" });
   const data = await r.json().catch(() => ({}));
