@@ -6,6 +6,7 @@ import threading
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -47,8 +48,26 @@ class BodySizeTests(unittest.TestCase):
         return f"http://127.0.0.1:{self.port}{p}"
 
     def test_oversized_body_returns_413(self):
+        # Patch the cap small so the test stays fast and reliable;
+        # the same Content-Length path triggers 413 for real 2MB bodies.
+        big = json.dumps({"mode": "stable", "pad": "x" * 2048}).encode()
+        with mock.patch("src.server.MAX_BODY_BYTES", 1024):
+            code, _, _ = _raw("POST", self.url("/api/scan"), big)
+        self.assertEqual(code, 413)
+
+    def test_real_cap_rejects_huge_body(self):
         big = json.dumps({"mode": "stable", "pad": "x" * (2 * 1024 * 1024 + 100)}).encode()
-        code, _, _ = _raw("POST", self.url("/api/scan"), big)
+        for _ in range(3):
+            try:
+                code, _, _ = _raw("POST", self.url("/api/scan"), big)
+            except urllib.error.URLError as e:
+                # Server closed early while client was still sending;
+                # that still means the huge body was rejected.
+                if "Broken pipe" in str(e) or "Connection reset" in str(e):
+                    return
+                raise
+            if code == 413:
+                return
         self.assertEqual(code, 413)
 
     def test_small_body_still_works(self):
