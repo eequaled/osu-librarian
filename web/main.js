@@ -95,6 +95,25 @@ function onRowClick(row, ev) {
   refresh();
 }
 
+function clearFilters() {
+  state.filters = defaultFilters();
+  const f = state.filters;
+  if ($("q")) $("q").value = f.q;
+  if ($("played")) $("played").value = f.played;
+  if ($("ranked")) $("ranked").value = f.ranked;
+  if ($("sort")) $("sort").value = f.sort;
+  if ($("smin-r")) $("smin-r").value = "0";
+  if ($("smax-r")) $("smax-r").value = "10";
+  if ($("sval")) $("sval").textContent = "0 – ∞";
+  document.querySelectorAll('input[name="view"]').forEach((r) => {
+    r.checked = r.value === f.view;
+  });
+  state.paintRuleset?.();
+  state.activeIdx = -1;
+  state.memoKey = "";
+  refresh();
+}
+
 /* ---------- data loading ---------- */
 
 function showJob(label, jobPromise, onDone, onRetry) {
@@ -496,6 +515,7 @@ function main() {
     isSelected,
     isActive: (row) => state.rows[state.activeIdx] === row,
     onRowClick,
+    onClearFilters: clearFilters,
   });
   bulk = initBulk({
     selectedIds: () => [...state.selection],

@@ -3,11 +3,24 @@ import { escapeHtml, isPlayed } from "./store.js";
 
 const OVERSCAN = 12;
 
+export const MAX_TOASTS = 3;
+
 export function toast(msg, kind = "") {
   const box = document.getElementById("toasts");
+  if (!box) return;
+  while (box.children.length >= MAX_TOASTS) box.firstChild.remove();
   const el = document.createElement("div");
-  el.className = `toast ${kind}`;
-  el.textContent = msg;
+  el.className = `toast ${kind}`.trim();
+  if (kind === "error") el.setAttribute("role", "alert");
+  const text = document.createElement("span");
+  text.textContent = msg;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "toast-close";
+  btn.setAttribute("aria-label", "dismiss notification");
+  btn.textContent = "×";
+  btn.addEventListener("click", () => el.remove());
+  el.append(text, btn);
   box.appendChild(el);
   setTimeout(() => el.remove(), 5000);
 }
@@ -106,6 +119,19 @@ export class ListView {
       frag.appendChild(el);
     }
     this.rowsEl.replaceChildren(frag);
+    if (this.rows.length === 0 && !document.getElementById("list-error")) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.id = "list-empty";
+      const p = document.createElement("p");
+      p.textContent = "no matches · clear filters";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "clear filters";
+      btn.addEventListener("click", () => this.cb.onClearFilters?.());
+      empty.append(p, btn);
+      this.rowsEl.appendChild(empty);
+    }
     // #list-meta-text is owned by main.js paintSelAll(); don't clobber the checkbox.
     if (!document.getElementById("list-meta-text")) {
       const meta = document.getElementById("list-meta");
