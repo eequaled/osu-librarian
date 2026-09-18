@@ -41,6 +41,7 @@ Config via env:
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import os
 import secrets
@@ -79,12 +80,83 @@ def _now() -> float:
     return time.time()
 
 
-def _client_key(handler) -> str:
-    """Direct peer IP for rate limiting (trusted-proxy XFF comes later)."""
+def _trust_proxy_enabled() -> bool:
+    """TRUST_PROXY env var (default "0"): >0 means honor X-Forwarded-For."""
     try:
-        return handler.client_address[0] or "unknown"
+        return int((os.environ.get("TRUST_PROXY", "0") or "0").strip()) > 0
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _is_ipish(s: str) -> bool:
+    """True for IPv4/IPv6 literals; used to reject garbage XFF entries."""
+    try:
+        ipaddress.ip_address(s)
+        return True
+    except ValueError:
+        return False
+
+
+def _get_xff(headers) -> str | None:
+    """Case-insensitive X-Forwarded-For lookup; None if absent."""
+    if headers is None:
+        return None
+    try:
+        get = getattr(headers, "get", None)
+        if callable(get):
+            # HTTPMessage (real handler) is case-insensitive, so this
+            # suffices there; plain dicts from tests may use any case.
+            val = get("X-Forwarded-For")
+            if isinstance(val, str) and val:
+                return val
+            if isinstance(headers, dict):
+                for k, v in headers.items():
+                    try:
+                        if isinstance(k, str) and k.lower() == "x-forwarded-for":
+                            if isinstance(v, str) and v:
+                                return v
+                            return None
+                    except Exception:
+                        continue
+            return None
+        if isinstance(headers, dict):
+            for k, v in headers.items():
+                try:
+                    if isinstance(k, str) and k.lower() == "x-forwarded-for":
+                        return v if isinstance(v, str) else None
+                except Exception:
+                    continue
     except Exception:
-        return "unknown"
+        return None
+    return None
+
+
+def _client_key(handler) -> str:
+    """Rate-limit key: peer IP, or leftmost XFF entry when TRUST_PROXY>0."""
+    try:
+        peer = handler.client_address[0] or "unknown"
+    except Exception:
+        peer = "unknown"
+    if not peer:
+        peer = "unknown"
+    if not _trust_proxy_enabled():
+        return peer
+    try:
+        raw = _get_xff(getattr(handler, "headers", None))
+    except Exception:
+        return peer
+    if not isinstance(raw, str) or not raw.strip():
+        return peer
+    # Leftmost entry is the original client: Render/Fly append each proxy
+    # hop to the right, so the first entry is the client-supplied one.
+    # Counting back TRUST_PROXY trailing hops would be overkill here — with
+    # a single trusted TLS proxy the leftmost entry already separates
+    # clients into per-client buckets, and any spoofed value only isolates
+    # the spoofer into their own bucket instead of sharing the proxy IP.
+    leftmost = raw.split(",")[0].strip()
+    if not leftmost or not _is_ipish(leftmost):
+        return peer
+    return leftmost
 
 
 def _bucket_limited(key: str, now: float) -> bool:
