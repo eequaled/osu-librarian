@@ -393,11 +393,24 @@ def _extract_error_detail(
     return ""
 
 
-def _post(url: str, fields: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
-    """POST form fields, return parsed JSON dict. Raises RelayError (safe)."""
-    data = urllib.parse.urlencode({k: v for k, v in fields.items()}).encode()
-    req = urllib.request.Request(
-        url, data=data, headers={"Accept": "application/json"}, method="POST")
+def _config_secret() -> str:
+    """Configured client secret, or empty string if config is unreadable."""
+    try:
+        return str(get_config()[1] or "")
+    except Exception:
+        return ""
+
+
+def _request_json(url: str, *, method: str, headers: dict, sensitive: list[str],
+                  what: str, timeout: float = REQUEST_TIMEOUT,
+                  data: bytes | None = None) -> dict:
+    """One upstream JSON request shared by _post and _get.
+
+    Raises RelayError with a scrubbed, secrets-free message on any failure.
+    `sensitive` values never appear in error details; `what` names the
+    operation in every message (e.g. "token exchange failed").
+    """
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read().decode("utf-8", "replace")
@@ -411,75 +424,49 @@ def _post(url: str, fields: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
                 e.close()
             except Exception:
                 pass
-        try:
-            _cfg_sec = get_config()[1]
-        except Exception:
-            _cfg_sec = ""
-        try:
-            _code_val = str((fields or {}).get("code", "") or "")
-        except Exception:
-            _code_val = ""
-        try:
-            _sec_val = str((fields or {}).get("client_secret", "") or _cfg_sec or "")
-        except Exception:
-            _sec_val = _cfg_sec or ""
-        _sens = [s for s in (_sec_val, _cfg_sec, _code_val) if s]
-        detail = _extract_error_detail(body, _sens)
+        sens = [s for s in sensitive if s]
+        detail = _extract_error_detail(body, sens)
         if detail:
-            raise RelayError(f"token exchange failed: HTTP {e.code}: {detail}")
-        raise RelayError(f"token exchange failed: HTTP {e.code}")
+            raise RelayError(f"{what}: HTTP {e.code}: {detail}")
+        raise RelayError(f"{what}: HTTP {e.code}")
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        raise RelayError("token exchange failed: upstream unreachable")
+        raise RelayError(f"{what}: upstream unreachable")
     try:
         obj = json.loads(raw or "null")
     except ValueError:
-        raise RelayError("token exchange failed: bad upstream response")
+        raise RelayError(f"{what}: bad upstream response")
     if not isinstance(obj, dict):
-        raise RelayError("token exchange failed: bad upstream response")
+        raise RelayError(f"{what}: bad upstream response")
     return obj
+
+
+def _post(url: str, fields: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
+    """POST form fields, return parsed JSON dict. Raises RelayError (safe)."""
+    data = urllib.parse.urlencode({k: v for k, v in fields.items()}).encode()
+    cfg = _config_secret()
+    try:
+        _sec_val = str((fields or {}).get("client_secret", "") or cfg or "")
+    except Exception:
+        _sec_val = cfg
+    try:
+        _code_val = str((fields or {}).get("code", "") or "")
+    except Exception:
+        _code_val = ""
+    return _request_json(
+        url, method="POST", data=data,
+        headers={"Accept": "application/json"},
+        sensitive=[_sec_val, cfg, _code_val],
+        what="token exchange failed", timeout=timeout)
 
 
 def _get(url: str, token: str, timeout: float = REQUEST_TIMEOUT) -> dict:
     """GET with Bearer token, return parsed JSON dict. Raises RelayError (safe)."""
-    req = urllib.request.Request(url, headers={
-        "Accept": "application/json",
-        "Authorization": f"Bearer {token}",
-    }, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        try:
-            body = e.read().decode("utf-8", "replace")
-        except Exception:
-            body = ""
-        finally:
-            try:
-                e.close()
-            except Exception:
-                pass
-        try:
-            _cfg_sec2 = get_config()[1]
-        except Exception:
-            _cfg_sec2 = ""
-        try:
-            _tok_val = str(token or "")
-        except Exception:
-            _tok_val = ""
-        _sens2 = [s for s in (_cfg_sec2, _tok_val) if s]
-        detail = _extract_error_detail(body, _sens2)
-        if detail:
-            raise RelayError(f"profile fetch failed: HTTP {e.code}: {detail}")
-        raise RelayError(f"profile fetch failed: HTTP {e.code}")
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        raise RelayError("profile fetch failed: upstream unreachable")
-    try:
-        obj = json.loads(raw or "null")
-    except ValueError:
-        raise RelayError("profile fetch failed: bad upstream response")
-    if not isinstance(obj, dict):
-        raise RelayError("profile fetch failed: bad upstream response")
-    return obj
+    return _request_json(
+        url, method="GET",
+        headers={"Accept": "application/json",
+                 "Authorization": f"Bearer {token}"},
+        sensitive=[_config_secret(), str(token or "")],
+        what="profile fetch failed", timeout=timeout)
 
 
 def _pop_ticket_payload(ticket: str) -> dict | None:

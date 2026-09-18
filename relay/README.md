@@ -24,6 +24,8 @@ user's own token — the relay is out of the loop.
    `GET https://osu.ppy.sh/api/v2/me/` for `user_id`/`username`, stores the
    token **in memory under the ticket**, and
    `302` redirects to `http://127.0.0.1:<localport>/api/auth/relay-return?ticket=<ticket>`.
+`<localport>` is 1-65535; browsers on default ports send the protocol-derived
+fallback (443 on https, 80 on http) since `location.port` is empty there.
 5. Local app (server-to-server): `GET https://<relay>/token?ticket=..` →
    `{access_token, refresh_token, expires_in, obtained_at, user_id, username}`.
    The ticket is **deleted on first fetch** (one-time). Unknown / expired /
