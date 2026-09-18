@@ -143,8 +143,8 @@ export function renderDetail(target) {
       `<tr><td class="k">difficulty</td><td>${escapeHtml(m.diff)}</td></tr>` +
       `<tr><td class="k">mode</td><td>${escapeHtml(m.mode_name || "")}</td></tr>` +
       `<tr><td class="k">stars</td><td>${(m.stars || 0).toFixed(2)}</td></tr>` +
-      `<tr><td class="k">bpm / length</td><td>${m.bpm || "—"} · ${Math.round((m.length_ms || 0) / 1000)}s</td></tr>` +
-      `<tr><td class="k">AR CS OD HP</td><td>${m.ar} ${m.cs} ${m.od} ${m.hp}</td></tr>` +
+      `<tr><td class="k">bpm / length</td><td>${escapeHtml(m.bpm || "—")} · ${Math.round((Number(m.length_ms) || 0) / 1000)}s</td></tr>` +
+      `<tr><td class="k">AR CS OD HP</td><td>${escapeHtml(m.ar)} ${escapeHtml(m.cs)} ${escapeHtml(m.od)} ${escapeHtml(m.hp)}</td></tr>` +
       `<tr><td class="k">status</td><td>${escapeHtml(m.ranked || "")}</td></tr>` +
       `<tr><td class="k">played</td><td>${isPlayed(m) ? "yes" : "no"} (local: ${m.played_local ? "yes" : "no"}, online: ${m.played_online ? "yes" : "no"})</td></tr>` +
       `</table><p>${link}</p>`;
