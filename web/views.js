@@ -42,6 +42,11 @@ function mapMeta(m) {
     (m.grade ? ` · <span class="grade">${escapeHtml(m.grade)}</span>` : "");
 }
 
+/* Stable DOM id for a virtual-list row, used for aria-activedescendant. */
+export function rowDomId(i) {
+  return `list-row-${i}`;
+}
+
 function rowHtml(row, selected) {
   const sel = selected ? "☑" : "☐";
   if (row.type === "set") {
@@ -50,7 +55,7 @@ function rowHtml(row, selected) {
     const thumb = firstId
       ? `<img class="thumb" loading="lazy" src="/api/art?id=${encodeURIComponent(firstId)}" alt="" onerror="this.remove()">`
       : "";
-    return `<div class="cb">${sel}</div>` + thumb +
+    return `<div class="cb" aria-hidden="true">${sel}</div>` + thumb +
       `<div class="main-cell">▸ ${escapeHtml(s.artist)} — ${escapeHtml(s.title)} ` +
       `<span class="sub">${s.maps.length} diffs · ${s.played}/${s.maps.length} played · ★${s.maxStars.toFixed(1)}</span></div>`;
   }
@@ -60,7 +65,7 @@ function rowHtml(row, selected) {
   const thumb = m.id
     ? `<img class="thumb" loading="lazy" src="/api/art?id=${encodeURIComponent(m.id)}" alt="" onerror="this.remove()">`
     : "";
-  return `<div class="cb">${sel}</div><div class="dot ${dot}"></div>` + thumb +
+  return `<div class="cb" aria-hidden="true">${sel}</div><div class="dot ${dot}"></div>` + thumb +
     `<div class="main-cell" ${pad}>${escapeHtml(m.artist)} — ${escapeHtml(m.title)} ` +
     `<span class="sub">[${escapeHtml(m.diff)}]</span><br><span class="sub">${mapMeta(m)}</span></div>` +
     `<div class="meta"><span>${escapeHtml(m.mode_name || "")}</span>` +
@@ -108,17 +113,29 @@ export class ListView {
     const frag = document.createDocumentFragment();
     for (let i = start; i < end; i++) {
       const row = this.rows[i];
+      const selected = this.cb.isSelected(row);
       const el = document.createElement("div");
       el.className = `row ${row.type}${this.cb.isActive(row) ? " active" : ""}`;
       el.style.top = `${this.offsets[i]}px`;
       el.style.height = `${row.h}px`;
       el.dataset.idx = i;
+      el.id = rowDomId(i);
       el.setAttribute("role", "option");
-      el.setAttribute("aria-selected", this.cb.isSelected(row) ? "true" : "false");
-      el.innerHTML = rowHtml(row, this.cb.isSelected(row));
+      el.setAttribute("tabindex", "-1");
+      el.setAttribute("aria-selected", selected ? "true" : "false");
+      el.setAttribute("aria-checked", selected ? "true" : "false");
+      el.innerHTML = rowHtml(row, selected);
       frag.appendChild(el);
     }
     this.rowsEl.replaceChildren(frag);
+    // Keep focus on #list (existing global key handler) while exposing the
+    // active row to AT via aria-activedescendant.
+    const activeIdx = this.rows.findIndex((r) => this.cb.isActive(r));
+    if (activeIdx >= start && activeIdx < end) {
+      this.list.setAttribute("aria-activedescendant", rowDomId(activeIdx));
+    } else {
+      this.list.removeAttribute("aria-activedescendant");
+    }
     if (this.rows.length === 0 && !document.getElementById("list-error")) {
       const empty = document.createElement("div");
       empty.className = "empty";
