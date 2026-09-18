@@ -63,6 +63,7 @@ CALLBACK_TICKET_MAX_ATTEMPTS = 10  # max exchanges attempted per ticket
 REQUEST_TIMEOUT = 15  # seconds for all outbound osu! calls
 HANDLER_TIMEOUT = 60  # seconds socket timeout per request (slowloris guard)
 MAX_PAIR_BODY = 1_000_000  # cap on discarded POST /pair body bytes
+MAX_TICKETS = 5000  # cap on in-memory ticket store (LRU-ish evict oldest)
 
 
 class RelayError(Exception):
@@ -477,6 +478,26 @@ class Handler(BaseHTTPRequestHandler):
         with _lock:
             if _bucket_limited(ip, now):
                 return self._send_json(429, {"error": "rate_limited"}, allow_cors=True)
+            while len(_tickets) >= MAX_TICKETS:
+                try:
+                    oldest = min(
+                        _tickets.items(),
+                        key=lambda kv: float(kv[1].get("created_at", 0)),
+                    )[0]
+                except Exception:
+                    try:
+                        oldest = next(iter(_tickets))
+                    except StopIteration:
+                        break
+                try:
+                    del _tickets[oldest]
+                except KeyError:
+                    break
+                try:
+                    sys.stderr.write(
+                        "ticket store full: evicting oldest ticket\n")
+                except Exception:
+                    pass
             ticket = secrets.token_hex(32)
             _tickets[ticket] = {"created_at": now, "data": None, "attempts": 0}
         return self._send_json(200, {"ticket": ticket, "expires_in": TICKET_TTL},
