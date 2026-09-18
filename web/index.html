@@ -21,7 +21,7 @@
     <button id="mode-lazer" data-mode="lazer">lazer</button>
   </div>
   <button id="scan-btn">scan</button>
-  <div id="job-progress" class="job" hidden><span id="job-label"></span><progress id="job-bar" max="100" value="0" aria-label="background job progress"></progress></div>
+  <div id="job-progress" class="job" hidden><span id="job-label" role="status"></span><progress id="job-bar" max="100" value="0" aria-label="background job progress"></progress></div>
   <div class="spacer"></div>
   <span id="account-chip" class="chip">not linked</span>
   <button id="link-btn">link account</button>
@@ -61,7 +61,7 @@
         <option value="played">played</option>
         <option value="unplayed">unplayed</option>
       </select>
-      <span class="stars-label">★</span><div class="dual-range"><input id="smin-r" type="range" min="0" max="10" step="0.5" value="0" aria-label="min stars"><input id="smax-r" type="range" min="0" max="10" step="0.5" value="10" aria-label="max stars"></div><span id="sval">0 – ∞</span>
+      <span class="stars-label">★</span><div class="dual-range" role="group" aria-label="star rating range" aria-describedby="sval"><input id="smin-r" type="range" min="0" max="10" step="0.5" value="0" aria-label="min stars"><input id="smax-r" type="range" min="0" max="10" step="0.5" value="10" aria-label="max stars"></div><span id="sval" aria-live="polite">0 – ∞</span>
       <select id="ranked" aria-label="ranked status filter">
         <option value="all">any status</option>
         <option value="ranked">ranked</option>
@@ -89,8 +89,8 @@
   <button id="sel-export">export…</button>
 </div>
 
-<dialog id="auth-dialog">
-  <h3>Link osu! account</h3>
+<dialog id="auth-dialog" aria-labelledby="auth-dialog-title">
+  <h3 id="auth-dialog-title">Link osu! account</h3>
   <section id="auth-relay-section">
     <p><b>Link with the Librarian app</b> — no setup needed. One click, approve on osu!, done.</p>
     <p><button id="auth-relay-open">authorize with one click</button></p>
@@ -106,7 +106,7 @@
       <button id="auth-save">save</button>
     </p>
     <p>Application Callback URL — use this exact URL, and the same port as the app:<br>
-      <input id="auth-callback" readonly value="http://localhost:8787/api/auth/callback" size="44" aria-label="application callback URL">
+      <input id="auth-callback" readonly value="" placeholder="loading…" size="44" aria-label="application callback URL">
       <button id="auth-copy">copy</button>
     </p>
     <p><button id="auth-open">authorize on osu.ppy.sh</button></p>
@@ -114,8 +114,8 @@
   <p><button id="auth-close">close</button></p>
 </dialog>
 
-<dialog id="export-dialog">
-  <h3>Export selection</h3>
+<dialog id="export-dialog" aria-labelledby="export-dialog-title">
+  <h3 id="export-dialog-title">Export selection</h3>
   <p><span id="export-count"></span> beatmaps selected.</p>
   <p>
     <button data-fmt="json">.json</button>

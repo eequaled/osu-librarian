@@ -506,6 +506,22 @@ async function adoptInstall(kind, path) {
   }
 }
 
+function setupAuthDialogFocus() {
+  const dialog = $("auth-dialog");
+  const linkBtn = $("link-btn");
+  if (!dialog || !linkBtn) return;
+  let trigger = null;
+  // initAuth() owns the open call (auth.js); this listener runs after it, so
+  // the dialog is already open and the first control can take focus.
+  linkBtn.addEventListener("click", () => {
+    trigger = document.activeElement;
+    requestAnimationFrame(() => {
+      if (dialog.open) dialog.querySelector("button:not([disabled])")?.focus();
+    });
+  });
+  dialog.addEventListener("close", () => { trigger?.focus?.(); });
+}
+
 function main() {
   const prefs = loadPrefs();
   state.filters = { ...defaultFilters(), ...prefs.filters };
@@ -536,6 +552,7 @@ function main() {
     },
   });
   initAuth(() => boot());
+  setupAuthDialogFocus();
 
   bindFilters();
   bindKeyboard();
