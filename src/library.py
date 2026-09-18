@@ -84,7 +84,7 @@ class Mapset:
 @dataclass
 class Filters:
     text: str = ""
-    played: str = "all"          # all | played | unplayed
+    played: str = "all"          # all | played | online_only | unplayed
     mode: str = "all"            # all | osu | taiko | catch | mania
     star_min: float = 0.0
     star_max: float = 99.0
@@ -106,7 +106,8 @@ class Filters:
 # 2. played: f.played "all" = no filter (any other unknown value also passes).
 #            "played" keeps rows with b.played == (played_local or
 #            played_online) truthy (js isPlayed(m)). "unplayed" keeps rows
-#            with not played. played is derived, never stored.
+#            with not played. "online_only" keeps rows with !played_local and
+#            played_online. played is derived, never stored.
 # 3. mode  : f.mode "all" = no filter. Else exact string equality
 #            b.mode_name == f.mode ("osu"|"taiko"|"catch"|"mania"). Numeric
 #            b.mode is IGNORED here. Case-sensitive.
@@ -134,6 +135,8 @@ def apply_filters(maps: list[Beatmap], f: Filters) -> list[Beatmap]:
         if f.played == "played" and not b.played:
             continue
         if f.played == "unplayed" and b.played:
+            continue
+        if f.played == "online_only" and (b.played_local or not b.played_online):
             continue
         if f.mode != "all" and b.mode_name != f.mode:
             continue

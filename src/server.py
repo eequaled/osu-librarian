@@ -15,6 +15,9 @@ Endpoints (this docstring is the canonical endpoint contract; docs/webui-spec.md
                                  relay: {url, client_id, available}}
    GET  /api/auth/relay-return   ?ticket=.. -> HTML (one-click relay return, saves token)
   POST /api/online-check        {} -> {job_id}
+  GET  /api/reconciliation      {available, linked, total, local_played,
+                                 online_only, unplayed, lazer_style_unplayed,
+                                 checking}
   POST /api/export              {ids, format} -> file download
 """
 from __future__ import annotations
@@ -722,6 +725,49 @@ def run_online_check() -> tuple[str, str]:
     return job.id, ""
 
 
+def _reconciliation_payload() -> dict:
+    """Classify every loaded row: local_played / online_only / unplayed.
+
+    lazer_style_unplayed = unplayed + online_only (lazer "by rank" counts
+    online-played maps as played). Rows with missing/corrupt flags count as
+    unplayed; this endpoint never raises on individual rows.
+    """
+    mode = get_mode()
+    _k, rows, _fp = cachemod.load_scan(mode)
+    rows = _clean_rows(rows)
+    total = len(rows)
+    local = online_only = 0
+    for r in rows:
+        try:
+            pl = bool(r.get("played_local"))
+            po = bool(r.get("played_online"))
+        except AttributeError:
+            pl = po = False
+        if pl:
+            local += 1
+        elif po:
+            online_only += 1
+    unplayed = total - local - online_only
+    checking = None
+    for j in registry.active():
+        if j.get("kind") == "online":
+            checking = {"state": j.get("state"), "done": j.get("done", 0),
+                        "total": j.get("total", 0), "job_id": j.get("id")}
+            break
+    tok = _load_token()
+    s = load_settings()
+    return {
+        "available": total > 0,
+        "linked": _token_linked(tok, s),
+        "total": total,
+        "local_played": local,
+        "online_only": online_only,
+        "unplayed": unplayed,
+        "lazer_style_unplayed": unplayed + online_only,
+        "checking": checking,
+    }
+
+
 # ---- HTTP ----
 
 class Handler(BaseHTTPRequestHandler):
@@ -790,6 +836,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._status()
         if path == "/api/library":
             return self._library()
+        if path == "/api/reconciliation":
+            return self._json(200, _reconciliation_payload())
         if path == "/api/art":
             return self._art(parsed.query)
         if path.startswith("/api/jobs/"):

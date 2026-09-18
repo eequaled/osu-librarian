@@ -90,6 +90,7 @@ export function visibleMaps(maps, f) {
   const out = maps.filter((m) => {
     if (f.played === "played" && !isPlayed(m)) return false;
     if (f.played === "unplayed" && isPlayed(m)) return false;
+    if (f.played === "online_only" && (m.played_local || !m.played_online)) return false;
     if (f.mode !== "all" && m.mode_name !== f.mode) return false;
     const st = m.stars || 0;
     if (!(st >= f.smin && st <= f.smax) && !(st === 0 && f.smin <= 0)) return false;
