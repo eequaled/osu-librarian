@@ -11,7 +11,7 @@ from src.stable_scanner import scan_stable  # noqa: E402
 from tests.make_mock_library import make_mock_install  # noqa: E402
 
 
-def test_osu_parser():
+def _check_osu_parser():
     with tempfile.TemporaryDirectory() as td:
         make_mock_install(td)
         p = os.path.join(td, "Songs", "1001 Mapper One - Test Song Alpha", "diff-insane.osu")
@@ -24,7 +24,7 @@ def test_osu_parser():
         assert len(info["md5"]) == 32
 
 
-def test_filters_and_grouping():
+def _check_filters_and_grouping():
     maps = [
         Beatmap(id="a", set_id="1", artist="X", title="Alpha", creator="m",
                 diff="Insane", mode_name="osu", stars=5.0, played_local=True, beatmap_id=1),
@@ -41,7 +41,7 @@ def test_filters_and_grouping():
     assert len(group_mapsets(maps)) == 2
 
 
-def test_stable_scan_no_db():
+def _check_stable_scan_no_db():
     with tempfile.TemporaryDirectory() as td:
         mock = make_mock_install(td)
         maps = scan_stable(mock["songs"], "", "")
@@ -52,10 +52,10 @@ def test_stable_scan_no_db():
 
 class MvpTests(unittest.TestCase):
     def test_osu_parser(self):
-        test_osu_parser()
+        _check_osu_parser()
 
     def test_filters_and_grouping(self):
-        test_filters_and_grouping()
+        _check_filters_and_grouping()
 
     def test_stable_scan_no_db(self):
-        test_stable_scan_no_db()
+        _check_stable_scan_no_db()

@@ -24,6 +24,7 @@ from src.lazer_scanner import (  # noqa: E402
 from src.library import Beatmap, from_dict_list  # noqa: E402
 from src.osu_parser import parse_osu_file  # noqa: E402
 from src.server import Handler  # noqa: E402
+from tests._helpers import make_settings, req as _req, write_settings  # noqa: E402
 
 MD5_A = "a" * 32
 MD5_B = "b" * 32
@@ -313,17 +314,6 @@ class LibraryFieldTests(unittest.TestCase):
         self.assertEqual(maps[0].date_added, "2025-01-01T00:00:00.000Z")
 
 
-def _req(method, url, body=None, headers=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers=headers or {},
-                                 method=method)
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
 
 
 class ArtEndpointTests(unittest.TestCase):
@@ -447,6 +437,105 @@ class ArtEndpointTests(unittest.TestCase):
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+    def test_art_304_not_modified(self):
+        songs = os.path.join(self.tmp.name, "Songs")
+        folder = os.path.join(songs, "1001 Artist - Title")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "bg.jpg"), "wb") as f:
+            f.write(b"\xff\xd8\xff fake jpeg")
+        write_settings({"mode": "stable", "songs_dir": songs})
+        servermod.set_mode("stable")
+        rows = [{"id": "row304", "set_id": "1001",
+                 "folder": "1001 Artist - Title", "bg": "bg.jpg",
+                 "bg_hash": "", "origin": "stable"}]
+        cachemod.save_scan("stable", ["k304"], rows,
+                           {"files": {"k304": [1, 2]}})
+        httpd, port = self._serve()
+        try:
+            base = f"http://127.0.0.1:{port}"
+            code, headers, _ = _req("GET", base + "/api/art?id=row304")
+            self.assertEqual(code, 200)
+            etag = headers.get("ETag", "")
+            self.assertTrue(etag)
+            code, _, _ = _req("GET", base + "/api/art?id=row304",
+                              headers={"If-None-Match": etag})
+            self.assertEqual(code, 304)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_art_unknown_extension_octet_stream(self):
+        songs = os.path.join(self.tmp.name, "Songs")
+        folder = os.path.join(songs, "1001 Artist - Title")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "bg.unknownext123"), "wb") as f:
+            f.write(b"fake-bytes")
+        write_settings({"mode": "stable", "songs_dir": songs})
+        servermod.set_mode("stable")
+        rows = [{"id": "rowct", "set_id": "1001",
+                 "folder": "1001 Artist - Title", "bg": "bg.unknownext123",
+                 "bg_hash": "", "origin": "stable"}]
+        cachemod.save_scan("stable", ["kct"], rows,
+                           {"files": {"kct": [1, 2]}})
+        httpd, port = self._serve()
+        try:
+            code, headers, body = _req(
+                "GET", f"http://127.0.0.1:{port}/api/art?id=rowct")
+            self.assertEqual(code, 200, body[:200])
+            self.assertIn("application/octet-stream",
+                          headers.get("Content-Type", ""))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_art_missing_lazer_dir_404(self):
+        missing = os.path.join(self.tmp.name, "no-such-lazer")
+        write_settings({"mode": "lazer", "lazer_dir": missing})
+        servermod.set_mode("lazer")
+        rows = [{"id": "lzmiss", "set_id": "5", "bg": "bg.png",
+                 "bg_hash": HASH_BG.lower(), "origin": "lazer"}]
+        cachemod.save_scan("lazer", ["kmiss"], rows,
+                           {"files": {"kmiss": [1, 1]}})
+        httpd, port = self._serve()
+        try:
+            code, _, body = _req(
+                "GET", f"http://127.0.0.1:{port}/api/art?id=lzmiss")
+            self.assertEqual(code, 404)
+            self.assertIn(b"error", body)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+class RealmCacheStaleTests(unittest.TestCase):
+    def test_mtime_bump_invalidates_cache(self):
+        from src import realm_export as rexp
+        with tempfile.TemporaryDirectory() as td:
+            lazer = os.path.join(td, "lazer")
+            os.makedirs(lazer)
+            rp = os.path.join(lazer, "client.realm")
+            with open(rp, "wb") as f:
+                f.write(b"realm-v1")
+            st_old = os.stat(rp)
+            cdir = os.path.join(td, "cache")
+            os.makedirs(cdir)
+            stale = {"beatmaps": [{"onlineId": 1}], "scores": [],
+                     "sets": {}, "meta": {}}
+            with open(os.path.join(cdir, f"realm-{st_old.st_mtime_ns}.json"),
+                      "w") as f:
+                json.dump(stale, f)
+            # bump mtime: new content + forced newer timestamp
+            with open(rp, "wb") as f:
+                f.write(b"realm-v2-different")
+            new_ns = st_old.st_mtime_ns + 10_000_000
+            os.utime(rp, ns=(new_ns, new_ns))
+            with mock.patch.object(rexp.shutil, "which", return_value=None):
+                with mock.patch.object(rexp.subprocess, "run",
+                                       side_effect=AssertionError("no run")):
+                    out = rexp.export_realm(lazer, cdir)
+            # stale dump must NOT be returned once the mtime moved
+            self.assertIsNone(out)
 
 
 class RunnerTests(unittest.TestCase):

@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import src.server as servermod  # noqa: E402
 from src.server import Handler  # noqa: E402
+from tests._helpers import TOKEN_PATH, make_settings, req as _req  # noqa: E402
 
 FAKE_TICKET = "abcdef0123456789" * 4
 FAKE_TOKEN = {
@@ -29,18 +30,6 @@ FAKE_TOKEN = {
 }
 EVIL_USER = "<img src=x onerror=alert(1)>"
 CLIENT_SECRET = "shhh-test-secret"
-
-
-def _req(method, url, body=None, headers=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
 
 
 class _FakeRelayHandler(BaseHTTPRequestHandler):
@@ -119,28 +108,11 @@ class RelayFlowTests(unittest.TestCase):
 
     @classmethod
     def _settings(cls, relay=True):
-        api = {
-            "client_id": 12345,
-            "client_secret": CLIENT_SECRET,
-            "redirect_uri": "http://localhost:8787/api/auth/callback",
-            "user_id": 0,
-        }
         if relay:
-            api["relay_url"] = cls.relay_url
-            api["relay_client_id"] = 99999
+            api = {"relay_url": cls.relay_url, "relay_client_id": 99999}
         else:
-            api["relay_url"] = ""
-            api["relay_client_id"] = 0
-        return {
-            "mode": "stable",
-            "stable_dir": "/tmp/fake-stable",
-            "songs_dir": "/tmp/fake-stable/Songs",
-            "osu_db": "",
-            "scores_db": "",
-            "lazer_dir": "",
-            "realm_export": "",
-            "api": api,
-        }
+            api = {"relay_url": "", "relay_client_id": 0}
+        return make_settings(api_overrides=api)
 
     def setUp(self):
         servermod._current_mode = None
@@ -148,7 +120,7 @@ class RelayFlowTests(unittest.TestCase):
         with open("settings.json", "w", encoding="utf-8") as f:
             json.dump(self._settings(relay=True), f)
         try:
-            os.remove(".token.json")
+            os.remove(TOKEN_PATH)
         except OSError:
             pass
 
@@ -257,6 +229,24 @@ class RelayFlowTests(unittest.TestCase):
     def test_authorize_url_format_state_passthrough_and_scope(self):
         ticket, port = FAKE_TICKET, str(self.port)
         url = _build_relay_authorize_url(self.relay_url, 99999, ticket, port)
+        # Full-URL equality against the documented format (src/server.py
+        # relay comment): scope=identify+public, state=ticket.port, no
+        # trailing slash on the relay base. Expectation rebuilt by hand here,
+        # without importing web/ code.
+        redirect = self.relay_url.rstrip("/") + "/auth/callback"
+        expected = ("https://osu.ppy.sh/oauth/authorize"
+                    f"?client_id={urllib.parse.quote('99999', safe='')}"
+                    f"&redirect_uri={urllib.parse.quote(redirect, safe='')}"
+                    "&response_type=code"
+                    "&scope=identify+public"
+                    f"&state={urllib.parse.quote(f'{ticket}.{port}', safe='')}")
+        self.assertEqual(url, expected)
+        # Trailing slash on the relay base must not change the URL.
+        self.assertEqual(
+            _build_relay_authorize_url(self.relay_url + "/", 99999,
+                                       ticket, port),
+            expected)
+        self.assertNotIn("//auth/callback", url)
         parsed = urllib.parse.urlparse(url)
         self.assertEqual(parsed.scheme, "https")
         self.assertEqual(parsed.netloc, "osu.ppy.sh")

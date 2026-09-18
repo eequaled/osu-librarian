@@ -4,6 +4,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.parse
 import urllib.request
@@ -14,35 +15,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import src.server as servermod  # noqa: E402
 from src.server import Handler  # noqa: E402
+from tests._helpers import TOKEN_PATH, make_settings, req as _req, write_settings  # noqa: E402
 
 
-def _req(method, url, body=None, headers=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
-
-
-BASE_SETTINGS = {
-    "mode": "stable",
-    "stable_dir": "/tmp/fake-stable",
-    "songs_dir": "/tmp/fake-stable/Songs",
-    "osu_db": "",
-    "scores_db": "",
-    "lazer_dir": "",
-    "realm_export": "",
-    "api": {
-        "client_id": 12345,
-        "client_secret": "shhh-test-secret",
-        "redirect_uri": "http://localhost:8787/api/auth/callback",
-        "user_id": 0,
-    },
-}
+BASE_SETTINGS = make_settings()
 
 
 class AuthFlowTests(unittest.TestCase):
@@ -70,7 +46,7 @@ class AuthFlowTests(unittest.TestCase):
         with open("settings.json", "w", encoding="utf-8") as f:
             json.dump(json.loads(json.dumps(BASE_SETTINGS)), f)
         try:
-            os.remove(".token.json")
+            os.remove(TOKEN_PATH)
         except OSError:
             pass
 
@@ -241,6 +217,87 @@ class AuthFlowTests(unittest.TestCase):
         st = json.loads(body)
         self.assertTrue(st["configured"])
         self.assertNotIn("shhh-test-secret", body.decode("utf-8", "replace"))
+
+    # -- refresh path (expired obtained_at + refresh_token; mocked network) --
+
+    def _write_token(self, tok):
+        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+            json.dump(tok, f)
+
+    def test_valid_token_refresh_success(self):
+        self._write_token({"access_token": "old", "refresh_token": "r-123",
+                           "expires_in": 3600,
+                           "obtained_at": time.time() - 7200,
+                           "user_id": 42, "username": "kept"})
+        new_tok = {"access_token": "new-acc", "expires_in": 3600}
+        with mock.patch("src.osu_api.refresh_token",
+                        return_value=dict(new_tok)):
+            with mock.patch("src.osu_api.get_me",
+                            return_value={"id": 7, "username": "fresh"}):
+                out = servermod.valid_token(servermod.load_settings())
+        self.assertEqual(out, "new-acc")
+        with open(TOKEN_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved.get("access_token"), "new-acc")
+        self.assertEqual(saved.get("user_id"), 7)
+        self.assertEqual(saved.get("username"), "fresh")
+        # old refresh token carried over when the response omits it
+        self.assertEqual(saved.get("refresh_token"), "r-123")
+
+    def test_valid_token_refresh_failure_returns_empty(self):
+        self._write_token({"access_token": "old", "refresh_token": "r-123",
+                           "expires_in": 3600,
+                           "obtained_at": time.time() - 7200})
+        with mock.patch("src.osu_api.refresh_token",
+                        side_effect=Exception("dead refresh")):
+            out = servermod.valid_token(servermod.load_settings())
+        self.assertEqual(out, "")
+        raw = open(TOKEN_PATH, encoding="utf-8").read()
+        self.assertNotIn("new-acc", raw)
+
+    # -- relay-return / postMessage flow (mocked relay fetch, no network) --
+
+    def _relay_settings(self, url="http://127.0.0.1:9", cid=1):
+        cfg = json.loads(json.dumps(BASE_SETTINGS))
+        cfg["api"]["relay_url"] = url
+        cfg["api"]["relay_client_id"] = cid
+        with open("settings.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+
+    def test_relay_return_success_has_postmessage(self):
+        self._relay_settings()
+        ticket = "ab12cd34" * 8
+        fake_tok = {"access_token": "RELAY_A", "expires_in": 3600}
+        snippet = ('<script>try{if(window.opener){window.opener.postMessage('
+                   '{type:"osu-librarian-linked"},location.origin);}}'
+                   'catch(e){}</script>')
+        with mock.patch("src.server._fetch_relay_token",
+                        return_value=(True, dict(fake_tok))):
+            with mock.patch("src.osu_api.get_me",
+                            return_value={"id": 5, "username": "relay-u"}):
+                code, headers, body = _req(
+                    "GET", self.url(f"/api/auth/relay-return?ticket={ticket}"))
+        self.assertEqual(code, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+        text = body.decode("utf-8", "replace")
+        self.assertIn(snippet, text)
+        self.assertIn("Account linked", text)
+        self.assertNotIn("RELAY_A", text)
+        self.assertTrue(os.path.exists(TOKEN_PATH))
+
+    def test_relay_return_failure_has_postmessage_no_secrets(self):
+        self._relay_settings()
+        snippet = ('<script>try{if(window.opener){window.opener.postMessage('
+                   '{type:"osu-librarian-linked"},location.origin);}}'
+                   'catch(e){}</script>')
+        with mock.patch("src.server._fetch_relay_token",
+                        return_value=(False, "link failed: bad")):
+            code, headers, body = _req(
+                "GET", self.url("/api/auth/relay-return?ticket=" + "ab12cd34" * 8))
+        self.assertEqual(code, 400)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+        self.assertIn(snippet, body.decode("utf-8", "replace"))
+        self.assertFalse(os.path.exists(TOKEN_PATH))
 
 
 if __name__ == "__main__":
