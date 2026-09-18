@@ -103,4 +103,11 @@ dialog p { line-height: 1.6; }
 .skel { color: var(--dim); padding: 20px; }
 .empty { padding: 40px 20px; text-align: center; color: var(--dim); }
 
-@media (max-width: 1000px) { .detail { display: none; } .sidebar { width: 170px; } }
+@media (max-width: 1000px) {
+  .sidebar { width: 170px; }
+  /* Narrow screens stack the detail pane below the list instead of hiding it,
+   * so the selection details stay reachable. Desktop layout above is untouched. */
+  .layout { flex-wrap: wrap; }
+  .detail { flex: 1 1 100%; width: auto; border-left: none;
+    border-top: 1px solid var(--line); max-height: 38vh; }
+}
