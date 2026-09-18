@@ -8,6 +8,7 @@ services:
     plan: free
     rootDir: relay
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: OSU_CLIENT_ID
