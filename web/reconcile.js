@@ -10,7 +10,7 @@ function bucketRow(id, label, value, hint) {
     <span class="recon-value">${value}</span></button>`;
 }
 
-export function reconcileHtml(j) {
+export function reconcileHtml(j, lazerValue = "") {
   if (!j.available) {
     return `<p>No library loaded — run a scan first.</p>`;
   }
@@ -30,9 +30,35 @@ export function reconcileHtml(j) {
       <tr class="recon-formula"><td>lazer-style unplayed<br><span class="hint">= unplayed + online-only</span></td><td>${j.lazer_style_unplayed}</td></tr>
     </table>
     ${checking}${cta}
-    <p class="hint">lazer "by rank" counts online-played maps as played; if the
-    lazer-style number still disagrees with lazer's own count, the rest is
-    unranked/submitted plays this tool cannot see.</p>`;
+    <label class="recon-lazer">lazer "by rank" unplayed (from lazer):
+      <input id="recon-lazer-count" type="number" min="0" inputmode="numeric"
+             placeholder="e.g. 3025" value="${lazerValue ?? ""}"></label>
+    <div id="recon-lazer-verdict" aria-live="polite"></div>
+    <p class="hint">lazer "by rank" counts online-played maps as played; paste
+    lazer's own count above and the panel says exactly what explains the gap.</p>`;
+}
+
+/* Pure verdict builder for the lazer-count comparison (R2.2). Returns null
+ * until a number is entered; otherwise states the match/mismatch explicitly
+ * and accounts for every map in the gap. */
+export function lazerVerdictHtml(j, lazerCount) {
+  if (!Number.isFinite(lazerCount)) return null;
+  const mine = j.lazer_style_unplayed;
+  if (lazerCount === mine) {
+    return `<p class="recon-match">✔ lazer's ${lazerCount} unplayed match the ` +
+      `lazer-style count exactly — the gap is fully explained by ` +
+      `${j.online_only} online-only played maps.</p>`;
+  }
+  const diff = mine - lazerCount;
+  const word = diff > 0 ? "more" : "fewer";
+  const n = Math.abs(diff);
+  const why = diff > 0
+    ? `these ${n} maps are played in lazer but have no visible online score ` +
+      `(unranked/submitted-only plays, or scores outside the fetched window)`
+    : `our online check found ${n} online-only played maps that lazer's own ` +
+      `"by rank" view does not count (or the entered number is stale)`;
+  return `<p class="recon-mismatch">✘ does not match: lazer says ${lazerCount}, ` +
+      `this tool derives ${mine} — ${n} ${word}. ${why}.</p>`;
 }
 
 export async function fetchReconciliation(baseUrl = "") {
@@ -44,6 +70,7 @@ export async function fetchReconciliation(baseUrl = "") {
 export function initReconcile(hooks) {
   const { getPlayed, setPlayedFilter, startOnlineCheck } = hooks;
   const dialog = $("reconcile-dialog");
+  let lazerValue = "";
 
   async function paint() {
     let j;
@@ -54,16 +81,33 @@ export function initReconcile(hooks) {
         `<p class="hint">cannot reach the server (${e.message}) — close and retry.</p>`;
       return;
     }
-    $("reconcile-body").innerHTML = reconcileHtml(j);
+    $("reconcile-body").innerHTML = reconcileHtml(j, lazerValue);
     const active = getPlayed();
     for (const id of ["recon-local", "recon-online", "recon-unplayed"]) {
       const b = $(id);
       if (!b) continue;
       b.classList.toggle("active", b.dataset.value === active);
-      b.addEventListener("click", () => setPlayedFilter(b.dataset.value));
+      // Clicking the active bucket clears back to "all"; the previous filter
+      // state is the main-list filter itself, so "all" restores it exactly.
+      b.addEventListener("click", () => {
+        setPlayedFilter(b.dataset.value === active ? "all" : b.dataset.value);
+        paint();
+      });
     }
     if (j.checking && j.checking.state !== "done" && j.checking.state !== "error") {
       setTimeout(() => { if (dialog.open) paint(); }, 1500);
+    }
+    const lazerInput = $("recon-lazer-count");
+    if (lazerInput) {
+      const verdict = $("recon-lazer-verdict");
+      const updateVerdict = () => {
+        const raw = lazerInput.value.trim();
+        lazerValue = raw;
+        const n = raw === "" ? NaN : Number(raw);
+        verdict.innerHTML = lazerVerdictHtml(j, n) || "";
+      };
+      lazerInput.addEventListener("input", updateVerdict);
+      updateVerdict();
     }
     const checkBtn = $("recon-check");
     if (checkBtn) checkBtn.addEventListener("click", async () => {

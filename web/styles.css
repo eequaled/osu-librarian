@@ -124,6 +124,10 @@ dialog p { line-height: 1.6; }
 .recon-bucket .recon-label { font-size: 13px; }
 .recon-bucket .recon-value { font-weight: bold; }
 .recon-formula td { color: var(--dim); }
+.recon-lazer { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 8px 0; }
+.recon-lazer input { width: 90px; }
+.recon-match { color: var(--good); font-size: 13px; }
+.recon-mismatch { color: #ffb36b; font-size: 13px; }
 .sc-scope { margin: 8px 0; }
 .sc-table { width: 100%; border-collapse: collapse; }
 .sc-table td { padding: 3px 6px; }
