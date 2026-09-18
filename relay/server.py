@@ -60,6 +60,7 @@ RATE_LIMIT_MAX = 20  # per-IP per-endpoint ...
 RATE_LIMIT_WINDOW = 3600  # ... per hour
 CALLBACK_TICKET_MAX_ATTEMPTS = 10  # max exchanges attempted per ticket
 REQUEST_TIMEOUT = 15  # seconds for all outbound osu! calls
+HANDLER_TIMEOUT = 60  # seconds socket timeout per request (slowloris guard)
 MAX_PAIR_BODY = 1_000_000  # cap on discarded POST /pair body bytes
 
 
@@ -266,6 +267,10 @@ def _get(url: str, token: str, timeout: float = REQUEST_TIMEOUT) -> dict:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "OsuRelay/1.0"
+    # Bound each request: slowloris guard behind the TLS proxy. GET query
+    # bodies are bounded by URL length anyway; POST /pair is capped by
+    # MAX_PAIR_BODY in _discard_body.
+    timeout = HANDLER_TIMEOUT
 
     def log_message(self, fmt, *args):  # noqa: ARG002
         # NEVER log query strings: they carry codes/tickets. Log endpoint only.
@@ -538,6 +543,8 @@ def serve(port: int = 8099, bind: str = "0.0.0.0") -> None:
     sweeper = threading.Thread(target=_sweeper_loop, args=(stop,), daemon=True)
     sweeper.start()
     httpd = ThreadingHTTPServer((bind, port), Handler)
+    httpd.daemon_threads = True
+    httpd.timeout = HANDLER_TIMEOUT
     _cid, _sec, public_url, _p = get_config()
     where = public_url or f"http://{bind}:{port}"
     print(f"osu! relay at {where} (port {port}) — Ctrl-C to stop", flush=True)
