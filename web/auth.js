@@ -35,6 +35,21 @@ export function validRelayTarget(ticket, port) {
   return n >= 1 && n <= 65535;
 }
 
+/* Pair-ticket TTL: /pair answers {"ticket", "expires_in"} with seconds.
+ * Anything missing/junk falls back to the relay's 600s default. */
+export const PAIR_TTL_FALLBACK_SEC = 600;
+
+export function pairTtlMs(expiresIn, fallbackSec = PAIR_TTL_FALLBACK_SEC) {
+  const n = Number(expiresIn);
+  if (!Number.isFinite(n) || n <= 0) return fallbackSec * 1000;
+  return Math.floor(n * 1000);
+}
+
+export function formatPairCountdown(msLeft) {
+  const s = Math.max(0, Math.ceil(msLeft / 1000));
+  return `waiting for approval… link expires in ${s}s`;
+}
+
 async function fetchAuthStatus() {
   const r = await fetch("/api/auth/status");
   if (!r.ok) throw new Error(`status ${r.status}`);
@@ -120,13 +135,25 @@ export function initAuth(onLinked) {
     await checkLinkedAndNotify();
   }
 
-  function startPolling() {
+  function startPolling(ttlMs = 0) {
     stopPolling();
+    const deadline = ttlMs > 0 ? Date.now() + ttlMs : 0;
+    const tickHint = () => {
+      if (relayHint && deadline) relayHint.textContent = formatPairCountdown(deadline - Date.now());
+    };
+    tickHint();
     pollTimer = setInterval(async () => {
+      if (deadline && Date.now() >= deadline) {
+        stopPolling();
+        if (relayHint) relayHint.textContent = "link expired, try again";
+        toast("link expired, try again", "error");
+        return;
+      }
       let st = null;
       try {
         st = await fetchAuthStatus();
       } catch {
+        tickHint();
         return;
       }
       if (st?.linked) {
@@ -137,6 +164,8 @@ export function initAuth(onLinked) {
           : (st.user_id ? `user ${st.user_id}` : "account linked");
         toast(`linked as ${who}`);
         onLinked?.(await status().catch(() => st));
+      } else {
+        tickHint();
       }
     }, 2000);
   }
@@ -174,6 +203,7 @@ export function initAuth(onLinked) {
       relayBtn.disabled = true;
       try {
         let ticket = "";
+        let ttlMs = pairTtlMs(undefined);
         try {
           const r = await fetch(`${String(relayUrl).replace(/\/+$/, "")}/pair`, {
             method: "POST",
@@ -181,6 +211,7 @@ export function initAuth(onLinked) {
           const data = await r.json().catch(() => ({}));
           if (!r.ok || !data.ticket) throw new Error(data.error || `pair ${r.status}`);
           ticket = data.ticket;
+          ttlMs = pairTtlMs(data.expires_in ?? data.expiresIn);
         } catch {
           toast("linking service unreachable — use your own app below", "error");
           return;
@@ -195,7 +226,7 @@ export function initAuth(onLinked) {
           "_blank",
           "noopener",
         );
-        startPolling();
+        startPolling(ttlMs);
       } finally {
         pairing = false;
         relayBtn.disabled = false;
