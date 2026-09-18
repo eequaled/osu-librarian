@@ -184,6 +184,40 @@ def _save_token(tok: dict) -> None:
         pass
 
 
+def _token_linked(tok: dict, settings: Settings | None = None) -> bool:
+    """Cheap linked probe for status payloads: no network, no refresh.
+
+    Fresh tokens read linked; expired ones still read linked while a refresh
+    could succeed (refresh_token + app credentials configured), because only
+    a refresh attempt proves them dead. So status.linked can read true while
+    the next online-check job fails with a dead token — that split is
+    deliberate, to keep the polled endpoints free of blocking network calls.
+    The job error then tells the user to link the account again via the app
+    dialog.
+    """
+    if not isinstance(tok, dict) or not tok.get("access_token"):
+        return False
+    try:
+        obtained = float(tok.get("obtained_at", 0))
+    except (TypeError, ValueError):
+        obtained = 0.0
+    try:
+        expires = int(tok.get("expires_in", 0))
+    except (TypeError, ValueError):
+        try:
+            expires = int(float(tok.get("expires_in", 0)))
+        except (TypeError, ValueError):
+            expires = 0
+    if expires and time.time() - obtained < expires - 60:
+        return True
+    if settings is not None and tok.get("refresh_token") \
+            and settings.api.client_id and settings.api.client_secret:
+        return True
+    if not expires or not obtained:
+        return True  # legacy token file without timestamps: presence only
+    return False
+
+
 def valid_token(settings: Settings) -> str:
     """Usable access token or '' (refreshes server-side when possible)."""
     tok = _load_token()
@@ -756,7 +790,7 @@ class Handler(BaseHTTPRequestHandler):
                 relay_cid = int(s.api.relay_client_id or 0)
             except (TypeError, ValueError):
                 relay_cid = 0
-            return self._json(200, {"linked": bool(tok.get("access_token")),
+            return self._json(200, {"linked": _token_linked(tok, s),
                                    "user_id": tok.get("user_id", 0),
                                    "username": tok.get("username", ""),
                                    "redirect_uri": s.api.redirect_uri,
@@ -835,7 +869,7 @@ class Handler(BaseHTTPRequestHandler):
             "scan": {"version": _version(rows, fp) if fp else "none",
                      "cached": bool(rows)},
             "jobs": {"active": registry.active()},
-            "auth": {"linked": bool(tok.get("access_token")),
+            "auth": {"linked": _token_linked(tok, s),
                      "user_id": tok.get("user_id", 0),
                      "username": tok.get("username", "")},
             "installs": _cached_installs(),
