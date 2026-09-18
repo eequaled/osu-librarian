@@ -118,11 +118,16 @@ Settings file `settings.json` stores mode + paths + api creds (see `settings.exa
 ```
 main.py               CLI (scan / report / ui / web / auth / check-online)
 settings.example.json
+render.yaml           Render blueprint for the relay (canonical host)
+requirements.txt      optional extras (rosu-pp-py for local star ratings)
 src/config.py         settings + OS path auto-detect
+src/detect.py         install auto-detect (stable/lazer candidates)
 src/osu_parser.py     .osu text parser (+ MD5, BPM/length approx)
 src/stable_db.py      osu!.db / scores.db binary readers
 src/stable_scanner.py stable join: Songs + osu!.db + scores.db (+per-file parse/rejoin)
 src/lazer_scanner.py  lazer files/ scan + realm-export hook (+per-blob parse)
+src/realm_export.py   bundled tools/realm_export runner (node, realm@20.2.0)
+src/difficulty.py     local star-rating fallback via optional rosu-pp-py
 src/library.py        model + filters + mapset/difficulty grouping + selection
 src/osu_api.py        OAuth + bulk online-played check with TTL cache (stdlib only)
 src/cache.py          incremental scan cache (fingerprint + manifest + ETag version)
@@ -131,9 +136,16 @@ src/server.py         local HTTP API + static frontend (stdlib only)
 src/export.py         selection exporters (json/txt/collection.db)
 src/report.py         static HTML fallback viewer
 src/app_tk.py         tkinter desktop UI
-web/                  no-build frontend (index.html, styles.css, api/store/views/auth/bulk/main.js)
+web/                  no-build frontend (index.html, styles.css, api.js, store.js,
+                      views.js, auth.js, bulk.js, main.js)
+tools/realm_export/   node helper dumping client.realm to JSON (export.mjs,
+                      package.json; realm@20.2.0, node_modules gitignored)
+relay/                hosted OAuth relay (server.py, Dockerfile, fly.toml,
+                      README.md; `python3 -m unittest discover -s relay`)
 tests/                `python3 -m unittest discover -s tests` (python + node store checks)
-docs/webui-spec.md    build spec this app was implemented from
+docs/                 STATE.md, webui-spec.md (historical), AUDIT_SPEC.md, AUTH_AUDIT.md
+docs/webui-spec.md    build spec this app was implemented from (historical;
+                      src/server.py docstring is the API contract)
 ```
 
 ## Tests
