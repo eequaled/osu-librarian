@@ -132,6 +132,10 @@ dialog p { line-height: 1.6; }
 .dup-group { margin: 8px 0; }
 .dup-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 .dup-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); font-size: 13px; }
+#account-menu { position: fixed; top: 52px; right: 12px; z-index: 50;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px; min-width: 220px; display: flex; flex-direction: column; gap: 6px; }
+#account-menu .account-switch { text-align: left; }
 
 .skel { color: var(--dim); padding: 20px; }
 .empty { padding: 40px 20px; text-align: center; color: var(--dim); }

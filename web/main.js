@@ -1,6 +1,6 @@
 /* App wiring: state, filters, list, keyboard, scan/mode/online jobs. */
 import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, unlinkAccount, useInstall } from "./api.js";
-import { initAuth, onUnlink, renderAccountChip } from "./auth.js";
+import { initAuth, onSwitchAccount, onUnlink, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
@@ -603,6 +603,21 @@ function main() {
       boot();
     } catch (e) {
       toast(`unlink failed: ${e.message}`, "error");
+    }
+  });
+  onSwitchAccount(async (username) => {
+    try {
+      const r = await fetch("/api/accounts/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `switch ${r.status}`);
+      toast(`switched to ${username} — run an online check to refresh played flags`);
+      boot();
+    } catch (e) {
+      toast(`switch failed: ${e.message}`, "error");
     }
   });
   setupAuthDialogFocus();

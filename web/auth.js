@@ -69,6 +69,42 @@ async function saveAuthConfig(clientId, clientSecret) {
 
 /* Called by main.js: wires the chip's unlink action to the server call. */
 export function onUnlink(fn) { _unlinkHandler = fn; }
+/* Called by main.js: wires account switching (multi-account). */
+export function onSwitchAccount(fn) { _switchHandler = fn; }
+let _switchHandler = null;
+
+function showAccountMenu(auth) {
+  const existing = document.getElementById("account-menu");
+  if (existing) { existing.remove(); return; }
+  const menu = document.createElement("div");
+  menu.id = "account-menu";
+  menu.innerHTML = `<div id="account-menu-items">loading…</div>
+    <button id="account-unlink">unlink ${auth.username || ""}</button>`;
+  document.body.appendChild(menu);
+  const close = () => menu.remove();
+  setTimeout(() => document.addEventListener("click", function once(ev) {
+    if (!menu.contains(ev.target)) { close(); document.removeEventListener("click", once); }
+  }), 0);
+  document.getElementById("account-unlink").addEventListener("click", () => {
+    close();
+    if (confirm(`Unlink ${auth.username || "this account"}?\n` +
+        "Online played flags stay until the next online check.")) {
+      (_unlinkHandler || (() => {}))();
+    }
+  });
+  fetch("/api/accounts").then((r) => r.json()).then((j) => {
+    const items = document.getElementById("account-menu-items");
+    if (!items) return;
+    const others = (j.accounts || []).filter((a) => !a.active);
+    items.innerHTML = others.length
+      ? others.map((a) => `<button class="account-switch" data-name="${a.username}">` +
+          `switch to ${a.username}</button>`).join("")
+      : `<p class="hint">no other accounts stored — link another to add it</p>`;
+    items.querySelectorAll(".account-switch").forEach((b) => {
+      b.addEventListener("click", () => { close(); (_switchHandler || (() => {}))(b.dataset.name); });
+    });
+  }).catch(() => {});
+}
 
 export function initAuth(onLinked) {
   const dialog = document.getElementById("auth-dialog");
@@ -315,12 +351,7 @@ export function renderAccountChip(auth) {
     chip.innerHTML = `${img}<span>${who}</span>`;
     chip.title = who;
     chip.classList.add("linked");
-    chip.onclick = () => {
-      if (confirm(`Unlink ${auth.username || "this account"}?\n` +
-          "Online played flags stay until the next online check.")) {
-        (_unlinkHandler || (() => {}))();
-      }
-    };
+    chip.onclick = () => showAccountMenu(auth);
   } else {
     chip.textContent = "not linked";
     chip.title = "click “link account” to connect your osu! profile";

@@ -16,6 +16,9 @@ Endpoints (this docstring is the canonical endpoint contract; docs/webui-spec.md
                                  relay: {url, client_id, available}}
    GET  /api/auth/relay-return   ?ticket=.. -> HTML (one-click relay return, saves token)
   POST /api/auth/unlink         {} -> {ok} — deletes the stored token file
+  GET  /api/accounts            {accounts: [{username, user_id, active}]}
+  POST /api/accounts/switch     {username} -> {ok} — swaps active token
+  DELETE /api/accounts/:name    {ok} — removes a stored (inactive) account
   POST /api/online-check        {} -> {job_id}
   GET  /api/reconciliation      {available, linked, total, local_played,
                                  online_only, unplayed, lazer_style_unplayed,
@@ -46,6 +49,32 @@ from .jobs import JobRegistry
 from .library import from_dict_list, summarize, to_dict_list
 
 TOKEN_PATH = ".token.json"
+ACCOUNTS_DIR = ".accounts"
+
+
+def _account_path(username: str) -> str | None:
+    """Safe per-account token path inside ACCOUNTS_DIR, or None if the name
+    reduces to nothing. Filenames are [A-Za-z0-9_-] only; collisions get a
+    numeric suffix."""
+    import re as _re
+    safe = _re.sub(r"[^A-Za-z0-9_-]", "", str(username or ""))
+    if not safe:
+        return None
+    path = os.path.join(ACCOUNTS_DIR, f"{safe}.token.json")
+    n = 2
+    while os.path.exists(path) and _load_token_file(path).get("username") != username:
+        path = os.path.join(ACCOUNTS_DIR, f"{safe}-{n}.token.json")
+        n += 1
+    return path
+
+
+def _load_token_file(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            parsed = json.load(f)
+        return parsed if isinstance(parsed, dict) else {}
+    except (OSError, ValueError):
+        return {}
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 MAX_BODY_BYTES = 2 * 1024 * 1024
 
@@ -772,6 +801,91 @@ def _duplicates_payload() -> dict:
     return {"group_count": len(groups), "groups": groups}
 
 
+def _accounts_payload() -> dict:
+    """List stored accounts (inactive .accounts/*.token.json + active one)."""
+    accounts: list[dict] = []
+    active_tok = _load_token()
+    active_name = active_tok.get("username", "")
+    entries = []
+    if os.path.isdir(ACCOUNTS_DIR):
+        entries = sorted(os.listdir(ACCOUNTS_DIR))
+    for name in entries:
+        if not name.endswith(".token.json"):
+            continue
+        tok = _load_token_file(os.path.join(ACCOUNTS_DIR, name))
+        if tok.get("username"):
+            accounts.append({"username": tok.get("username", ""),
+                             "user_id": tok.get("user_id", 0),
+                             "active": tok.get("username") == active_name})
+    if active_tok.get("username") and not any(
+            a["username"] == active_name for a in accounts):
+        accounts.insert(0, {"username": active_name,
+                            "user_id": active_tok.get("user_id", 0),
+                            "active": True})
+    return {"accounts": accounts}
+
+
+def _switch_account(username: str) -> tuple[bool, str]:
+    """Swap the active token with a stored one (atomic, 0600 kept).
+
+    Refuses while a scan/online-check runs (rows would mix accounts).
+    Returns (ok, error_or_empty).
+    """
+    if not _scan_lock.acquire(blocking=False):
+        return False, "scan or online check in progress — try after it finishes"
+    _scan_lock.release()
+    if os.path.exists(TOKEN_PATH):
+        try:
+            if registry.active():
+                return False, "background job in progress — try after it finishes"
+        except Exception:
+            pass
+    path = _account_path(username)
+    if not path or not os.path.exists(path):
+        return False, "unknown account"
+    stored = _load_token_file(path)
+    if not stored.get("access_token"):
+        return False, "stored account has no usable token"
+    current = _load_token_file(TOKEN_PATH)
+    # write current (if any) into the slot, then stored into active
+    if current.get("access_token") and current.get("username"):
+        cur_path = _account_path(current["username"])
+        if cur_path:
+            os.makedirs(ACCOUNTS_DIR, exist_ok=True)
+            _atomic_write_json(cur_path, current)
+            try:
+                os.chmod(cur_path, 0o600)
+            except OSError:
+                pass
+    tmp = TOKEN_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(stored, f)
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, TOKEN_PATH)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return True, ""
+
+
+def _delete_account(username: str) -> tuple[bool, str]:
+    current = _load_token_file(TOKEN_PATH)
+    if current.get("username") == username:
+        return False, "cannot remove the active account — unlink instead"
+    path = _account_path(username)
+    if not path or not os.path.exists(path):
+        return False, "unknown account"
+    try:
+        os.remove(path)
+    except OSError as e:
+        return False, f"could not delete: {e}"
+    return True, ""
+
+
 def _reconciliation_payload() -> dict:
     """Classify every loaded row: local_played / online_only / unplayed.
 
@@ -887,6 +1001,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, _reconciliation_payload())
         if path == "/api/duplicates":
             return self._json(200, _duplicates_payload())
+        if path == "/api/accounts":
+            return self._json(200, _accounts_payload())
+        if path.startswith("/api/accounts/"):
+            name = urllib.parse.unquote(path[len("/api/accounts/"):])
+            ok, err = _delete_account(name)
+            if not ok:
+                return self._json(404, {"error": err})
+            return self._json(200, {"ok": True})
         if path == "/api/art":
             return self._art(parsed.query)
         if path.startswith("/api/jobs/"):
@@ -931,6 +1053,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"installs": [i.to_dict() for i in find_installs()]})
         return self._static(path)
 
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/accounts/"):
+            name = urllib.parse.unquote(path[len("/api/accounts/"):])
+            ok, err = _delete_account(name)
+            if not ok:
+                return self._json(404, {"error": err})
+            return self._json(200, {"ok": True})
+        self._discard_body()
+        return self._json(404, {"error": "not found"})
+
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -940,6 +1074,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(413, {"error": "request body too large"})
         if not isinstance(body, dict):
             body = {}
+        if path == "/api/accounts/switch":
+            ok, err = _switch_account(str(body.get("username", "")))
+            if not ok:
+                return self._json(409, {"error": err})
+            return self._json(200, {"ok": True})
         if path == "/api/auth/unlink":
             try:
                 os.remove(TOKEN_PATH)
