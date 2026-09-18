@@ -19,21 +19,25 @@ Design notes
   path cannot be derived from the row alone. Callers must therefore supply
   a ``resolve(row) -> path | None`` callback (see :func:`fill_rows`).
 * Results are cached in a tiny LRU keyed by
-  ``(abspath, mtime_ns, mode)`` (cap ~4096 entries) so rescans do not
-  recompute unchanged files.
+* ``(abspath, mtime_ns, size, mode)`` (cap ~4096 entries) so rescans do not
+* recompute unchanged files. ``size`` is part of the key so same-nanosecond
+* rewrites with different content cannot reuse stale stars.
+* Cache access is guarded by a module-level ``Lock`` (scan threads).
 """
 
 from __future__ import annotations
 
 import os
+import threading
 from collections import OrderedDict
 from collections.abc import Callable
 
 
 _CACHE_MAX = 4096
 
-# key: (abspath, mtime_ns, mode) -> stars (float) or None (failed calc)
-_CACHE: OrderedDict[tuple[str, int, int], float | None] = OrderedDict()
+# key: (abspath, mtime_ns, size, mode) -> stars (float) or None (failed calc)
+_CACHE: OrderedDict[tuple[str, int, int, int], float | None] = OrderedDict()
+_CACHE_LOCK = threading.Lock()
 
 __all__ = ["available", "stars_for_file", "fill_rows", "clear_cache"]
 
@@ -48,8 +52,9 @@ def available() -> bool:
 
 
 def clear_cache() -> None:
-    """Empty the internal ``(path, mtime, mode)`` LRU (mainly for tests)."""
-    _CACHE.clear()
+    """Empty the internal ``(path, mtime, size, mode)`` LRU (for tests)."""
+    with _CACHE_LOCK:
+        _CACHE.clear()
 
 
 def _mode_member(rosu_pp_py, mode_int: int):
@@ -104,7 +109,7 @@ def stars_for_file(path: str, mode: int = 0) -> float | None:
     raises for those cases.
 
     Results (including ``None`` failures for an existing file) are cached
-    by ``(abspath, mtime_ns, mode)`` so unchanged files are not
+    by ``(abspath, mtime_ns, size, mode)`` so unchanged files are not
     recomputed.
     """
     try:
@@ -128,15 +133,17 @@ def stars_for_file(path: str, mode: int = 0) -> float | None:
             st = os.stat(path_str)
         except OSError:
             return None
-        key = (os.path.abspath(path_str), st.st_mtime_ns, mode_int)
-        if key in _CACHE:
-            _CACHE.move_to_end(key)
-            return _CACHE[key]
+        key = (os.path.abspath(path_str), st.st_mtime_ns, st.st_size, mode_int)
+        with _CACHE_LOCK:
+            if key in _CACHE:
+                _CACHE.move_to_end(key)
+                return _CACHE[key]
         value = _compute_uncached(path_str, mode_int)
-        _CACHE[key] = value
-        _CACHE.move_to_end(key)
-        while len(_CACHE) > _CACHE_MAX:
-            _CACHE.popitem(last=False)
+        with _CACHE_LOCK:
+            _CACHE[key] = value
+            _CACHE.move_to_end(key)
+            while len(_CACHE) > _CACHE_MAX:
+                _CACHE.popitem(last=False)
         return value
     except Exception:
         return None
