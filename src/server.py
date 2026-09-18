@@ -332,7 +332,7 @@ def _finish_auth(code: str) -> tuple[bool, dict | str]:
 # osu! redirects to the relay (GET /auth/callback); the relay then redirects
 # the browser to http://127.0.0.1:<localport>/api/auth/relay-return?ticket=
 # <ticket>, which fetches {relay_url}/token?ticket=.. server-side and saves it.
-_TICKET_RE = re.compile(r"^[0-9a-fA-F]{1,128}$")
+_TICKET_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def _relay_settings() -> tuple[str, int]:
