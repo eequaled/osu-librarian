@@ -7,5 +7,7 @@ report.html
 .api_cache.json
 .token*.json
 .opencode/
+.freebuff/
 node_modules/
 .cache/
+lock.err
