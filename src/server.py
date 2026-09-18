@@ -24,6 +24,7 @@ import json
 import mimetypes
 import os
 import re
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -41,7 +42,41 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 registry = JobRegistry()
 _settings_lock = threading.Lock()
+_scan_lock = threading.Lock()
 _current_mode: str | None = None  # active mode for this server process
+
+
+def _atomic_write_json(path: str, obj, indent=None) -> None:
+    d = os.path.dirname(path) or "."
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, indent=indent)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _save_scan_atomic(mode: str, keys: list, rows: list[dict], fp: dict) -> None:
+    scan_path, manifest_path = cachemod.cache_paths(mode)
+    _atomic_write_json(scan_path, {"keys": keys, "rows": rows})
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifests = json.load(f)
+            if not isinstance(manifests, dict):
+                manifests = {}
+    except (OSError, ValueError):
+        manifests = {}
+    manifests[mode] = fp
+    _atomic_write_json(manifest_path, manifests, indent=1)
 
 
 def get_mode() -> str:
@@ -285,7 +320,7 @@ def _scan_stable_incremental(job, paths: dict, fresh: bool) -> None:
         keys.append(None)
         rows.append(b.__dict__)
     _carry_online(old_rows, rows)
-    cachemod.save_scan("stable", keys, rows, fp_new)
+    _save_scan_atomic("stable", keys, rows, fp_new)
     job.done = job.total
 
 
@@ -390,7 +425,7 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
                     rows.append(parse_lazer_blob(full, realm).__dict__)
             job.done += 1
         _carry_online(old_rows, rows)
-    cachemod.save_scan("lazer", keys, rows, fp_new)
+    _save_scan_atomic("lazer", keys, rows, fp_new)
     job.done = job.total
 
 
@@ -409,15 +444,36 @@ def _lazer_keys(lazer_dir: str, maps) -> list:
 
 
 def run_scan(mode: str, fresh: bool) -> str:
-    settings = load_settings()
-    paths = library_paths(settings, mode)
-    fp = cachemod.fingerprint(mode, **paths)
-    total = len(fp.get("files", {})) or 1
-    job = registry.create("scan", total=total)
+    """Start a scan job; '' when another scan/online-check is already running."""
+    if not _scan_lock.acquire(blocking=False):
+        return ""
+    try:
+        settings = load_settings()
+        paths = library_paths(settings, mode)
+        fp = cachemod.fingerprint(mode, **paths)
+        total = len(fp.get("files", {})) or 1
+        job = registry.create("scan", total=total)
+    except BaseException:
+        try:
+            _scan_lock.release()
+        except RuntimeError:
+            pass
+        raise
     if mode == "lazer":
-        registry.run_background(job, lambda j: _scan_lazer_incremental(j, paths, fresh))
+        _target = lambda j: _scan_lazer_incremental(j, paths, fresh)
     else:
-        registry.run_background(job, lambda j: _scan_stable_incremental(j, paths, fresh))
+        _target = lambda j: _scan_stable_incremental(j, paths, fresh)
+
+    def _wrapped(j):
+        try:
+            _target(j)
+        finally:
+            try:
+                _scan_lock.release()
+            except RuntimeError:
+                pass
+
+    registry.run_background(job, _wrapped)
     return job.id
 
 
@@ -433,20 +489,28 @@ def run_online_check() -> tuple[str, str]:
     keys, rows, fp = cachemod.load_scan(get_mode())
     if not rows:
         return "", "library empty — run a scan first"
+    if not _scan_lock.acquire(blocking=False):
+        return "", "scan already in progress"
 
     def _fn(job):
-        from .osu_api import mark_online_played
-        maps = from_dict_list(rows)
-        checkable = sum(1 for b in maps if b.beatmap_id not in (None, -1, 0))
-        job.total = checkable
-        job.done = 0
+        try:
+            from .osu_api import mark_online_played
+            maps = from_dict_list(rows)
+            checkable = sum(1 for b in maps if b.beatmap_id not in (None, -1, 0))
+            job.total = checkable
+            job.done = 0
 
-        def _prog(d, t):
-            job.done = d
-            job.total = t
+            def _prog(d, t):
+                job.done = d
+                job.total = t
 
-        mark_online_played(maps, int(user_id), token, progress=_prog)
-        cachemod.save_scan(get_mode(), keys, to_dict_list(maps), fp)
+            mark_online_played(maps, int(user_id), token, progress=_prog)
+            _save_scan_atomic(get_mode(), keys, to_dict_list(maps), fp)
+        finally:
+            try:
+                _scan_lock.release()
+            except RuntimeError:
+                pass
 
     job = registry.create("online", total=1)
     registry.run_background(job, _fn)
@@ -541,7 +605,10 @@ class Handler(BaseHTTPRequestHandler):
             if mode not in ("stable", "lazer"):
                 return self._json(400, {"error": "mode must be stable|lazer"})
             set_mode(mode)
-            return self._json(200, {"job_id": run_scan(mode, bool(body.get("fresh")))})
+            jid = run_scan(mode, bool(body.get("fresh")))
+            if not jid:
+                return self._json(409, {"error": "scan already in progress"})
+            return self._json(200, {"job_id": jid})
         if path == "/api/mode":
             mode = body.get("mode", "")
             if mode not in ("stable", "lazer"):
@@ -555,6 +622,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/online-check":
             jid, err = run_online_check()
             if err:
+                if err == "scan already in progress":
+                    return self._json(409, {"error": err})
                 return self._json(400, {"error": err})
             return self._json(200, {"job_id": jid})
         if path == "/api/export":
