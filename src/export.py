@@ -9,12 +9,21 @@ def to_json(rows: list[dict]) -> bytes:
     return json.dumps(rows, indent=1).encode("utf-8")
 
 
+def _safe_stars(v) -> float:
+    try:
+        if v is None or v == "":
+            return 0.0
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def to_txt(rows: list[dict]) -> bytes:
     lines = []
     for r in rows:
         lines.append(f"{r.get('artist', '')} - {r.get('title', '')} "
                      f"[{r.get('diff', '')}] ({r.get('mode_name', '')} "
-                     f"★{float(r.get('stars', 0.0)):.2f}) "
+                     f"★{_safe_stars(r.get('stars', 0.0)):.2f}) "
                      f"played={'yes' if r.get('played_local') or r.get('played_online') else 'no'} "
                      f"id:{r.get('beatmap_id', -1)}")
     return ("\n".join(lines) + "\n").encode("utf-8")
