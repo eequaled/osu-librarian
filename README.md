@@ -139,8 +139,12 @@ docs/webui-spec.md    build spec this app was implemented from
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests   # 20 tests: parsers, filters, cache/TTL,
-                                        # jobs, API server, CLI, web e2e, store.js via node
+python3 -m unittest discover -s tests   # backend: 209 test methods in 49 files
+                                        # (parsers, filters, cache/TTL, jobs,
+                                        # API server, CLI, web e2e, store.js via node)
+python3 -m unittest discover -s relay   # relay: 59 test methods in 12 files
+                                        # (tickets, rate limits, trust-proxy, scrubbing;
+                                        # osu! is mocked, no network)
 ```
 
 ## Next steps (post-MVP)
