@@ -150,6 +150,7 @@ function clearListError() {
 async function reloadLibrary() {
   try {
     const data = await library();
+    clearListError();
     if (!data.notModified) {
       state.maps = data.maps;
       state.memoKey = "";
@@ -158,6 +159,7 @@ async function reloadLibrary() {
     refresh(false);
   } catch (e) {
     toast(`cannot load library: ${e.message}`, "error");
+    showListError(`cannot load library: ${e.message}`, reloadLibrary);
   }
 }
 
