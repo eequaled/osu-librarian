@@ -118,6 +118,35 @@ function showJob(label, jobPromise, onDone) {
   );
 }
 
+/* Error panel inside the list, reusing the existing .empty style. */
+function showListError(message, onRetry) {
+  state.maps = [];
+  state.memoKey = "";
+  listView.setRows([]);
+  renderStats([], { diffs: 0, sets: 0, played: 0, unplayed: 0 }, state.mode);
+  renderDetail(null);
+  bulk.update(0);
+  paintSelAll();
+  document.getElementById("list-error")?.remove();
+  const err = document.createElement("div");
+  err.id = "list-error";
+  err.className = "empty";
+  const msg = document.createElement("p");
+  msg.textContent = message;
+  const retry = document.createElement("button");
+  retry.textContent = "retry";
+  retry.addEventListener("click", () => {
+    err.remove();
+    onRetry();
+  });
+  err.append(msg, retry);
+  $("list").appendChild(err);
+}
+
+function clearListError() {
+  document.getElementById("list-error")?.remove();
+}
+
 async function reloadLibrary() {
   try {
     const data = await library();
@@ -324,11 +353,17 @@ async function switchMode(mode) {
 }
 
 async function boot() {
+  let bootError = "";
   const st = await status().catch((e) => {
+    bootError = e.message;
     toast(`server unreachable: ${e.message}`, "error");
     return null;
   });
-  if (!st) return;
+  if (!st) {
+    showListError(`server unreachable: ${bootError}`, boot);
+    return;
+  }
+  clearListError();
   state.mode = st.mode;
   state.paintMode?.();
   renderAccountChip(st.auth);
