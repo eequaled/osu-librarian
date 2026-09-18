@@ -1,8 +1,19 @@
-"""Static HTML report: filters + mapset/difficulty toggle + checkboxes. No server."""
+"""DEPRECATED: static HTML report — superseded by the web UI.
+
+Filters + mapset/difficulty toggle + checkboxes. No server.
+
+Kept for now; removal needs owner approval. New work should target
+the web UI (main.py web / src/server.py + web/).
+"""
 from __future__ import annotations
 
 import html
 import json
+import warnings
+
+warnings.warn("src.report is deprecated (superseded by the web UI); "
+              "removal needs owner approval",
+              DeprecationWarning, stacklevel=2)
 
 from .library import Beatmap
 

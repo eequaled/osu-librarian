@@ -1,12 +1,22 @@
-"""Tkinter desktop UI: same filters as the HTML report + mode switch + multiselect.
+"""DEPRECATED: Tkinter desktop UI — superseded by the web UI.
+
+Same filters as the HTML report + mode switch + multiselect.
 
 Run: python3 main.py ui --in library.json
+
+Kept for now; removal needs owner approval. New work should target
+the web UI (main.py web / src/server.py + web/).
 """
 from __future__ import annotations
 
 import json
 import tkinter as tk
+import warnings
 from tkinter import filedialog, messagebox, ttk
+
+warnings.warn("src.app_tk is deprecated (superseded by the web UI); "
+              "removal needs owner approval",
+              DeprecationWarning, stacklevel=2)
 
 from .config import Settings, load_settings, save_settings
 from .library import Filters, apply_filters, from_dict_list, group_mapsets
