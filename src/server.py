@@ -1207,14 +1207,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "not found"})
         ctype, _ = mimetypes.guess_type(full)
         try:
+            st = os.stat(full)
             with open(full, "rb") as f:
                 body = f.read()
-            mtime = os.stat(full).st_mtime
+            mtime = st.st_mtime
+            etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
         except OSError:
             return self._json(404, {"error": "not found"})
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", ctype or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", etag)
         self.send_header("Last-Modified", time.strftime(
             "%a, %d %b %Y %H:%M:%S GMT", time.gmtime(mtime)))
         self.end_headers()
