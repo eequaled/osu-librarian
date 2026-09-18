@@ -299,19 +299,72 @@ def parse_state(state: str) -> tuple[str, int]:
     return ticket, port
 
 
-def _extract_error_detail(body: str) -> str:
+def _scrub_detail(detail: str, sensitive: list[str] | tuple[str, ...] | None) -> str:
+    """Replace secret/code occurrences with [redacted]; "" if left empty."""
+    try:
+        text = detail if isinstance(detail, str) else str(detail or "")
+    except Exception:
+        return ""
+    if not text:
+        return ""
+    try:
+        cands: list[str] = []
+        for s in (sensitive or []):
+            try:
+                if not isinstance(s, str):
+                    continue
+                v = s.strip()
+                if len(v) < 4:
+                    continue
+                if v and v not in cands:
+                    cands.append(v)
+                if len(v) >= 12 and v[:12] not in cands:
+                    cands.append(v[:12])
+            except Exception:
+                continue
+        for cand in cands:
+            try:
+                if cand and cand in text:
+                    text = text.replace(cand, "[redacted]")
+            except Exception:
+                continue
+    except Exception:
+        return ""
+    try:
+        if not text.strip():
+            return ""
+    except Exception:
+        return ""
+    return text
+
+
+def _extract_error_detail(
+    body: str, sensitive: list[str] | tuple[str, ...] | None = None
+) -> str:
     """Best-effort safe detail from an osu! error body (never codes/secrets)."""
+    if sensitive is None:
+        try:
+            _cid, _sec, _url, _p = get_config()
+            sensitive = [_sec] if _sec else []
+        except Exception:
+            sensitive = []
     try:
         obj = json.loads(body or "")
     except ValueError:
-        # Plain-text body: keep it short; upstream never echoes our secret/code.
+        # Plain-text body: scrub before truncating to catch split secrets.
         text = (body or "").strip().replace("\n", " ")
+        text = _scrub_detail(text, sensitive)
+        if not text.strip():
+            return ""
         return text[:200]
     if isinstance(obj, dict):
         for key in ("error_description", "error", "message"):
             val = obj.get(key)
             if isinstance(val, str) and val.strip():
-                return val.strip()[:200]
+                scrubbed = _scrub_detail(val.strip(), sensitive)
+                if not scrubbed.strip():
+                    continue
+                return scrubbed[:200]
     return ""
 
 
@@ -333,7 +386,20 @@ def _post(url: str, fields: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
                 e.close()
             except Exception:
                 pass
-        detail = _extract_error_detail(body)
+        try:
+            _cfg_sec = get_config()[1]
+        except Exception:
+            _cfg_sec = ""
+        try:
+            _code_val = str((fields or {}).get("code", "") or "")
+        except Exception:
+            _code_val = ""
+        try:
+            _sec_val = str((fields or {}).get("client_secret", "") or _cfg_sec or "")
+        except Exception:
+            _sec_val = _cfg_sec or ""
+        _sens = [s for s in (_sec_val, _cfg_sec, _code_val) if s]
+        detail = _extract_error_detail(body, _sens)
         if detail:
             raise RelayError(f"token exchange failed: HTTP {e.code}: {detail}")
         raise RelayError(f"token exchange failed: HTTP {e.code}")
@@ -367,7 +433,16 @@ def _get(url: str, token: str, timeout: float = REQUEST_TIMEOUT) -> dict:
                 e.close()
             except Exception:
                 pass
-        detail = _extract_error_detail(body)
+        try:
+            _cfg_sec2 = get_config()[1]
+        except Exception:
+            _cfg_sec2 = ""
+        try:
+            _tok_val = str(token or "")
+        except Exception:
+            _tok_val = ""
+        _sens2 = [s for s in (_cfg_sec2, _tok_val) if s]
+        detail = _extract_error_detail(body, _sens2)
         if detail:
             raise RelayError(f"profile fetch failed: HTTP {e.code}: {detail}")
         raise RelayError(f"profile fetch failed: HTTP {e.code}")

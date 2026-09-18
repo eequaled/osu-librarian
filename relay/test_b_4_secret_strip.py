@@ -29,6 +29,8 @@ class SecretStripCase(unittest.TestCase):
         os.environ["OSU_CLIENT_SECRET"] = "test-client-secret-xyz-123"
         os.environ["RELAY_PUBLIC_URL"] = "https://link.example.com"
         relay._reset_state()
+        self._orig_post = relay._post
+        self._orig_get = relay._get
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), relay.Handler)
         self.port = self.httpd.server_address[1]
         self._t = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -44,6 +46,8 @@ class SecretStripCase(unittest.TestCase):
             self.httpd.server_close()
         except Exception:
             pass
+        relay._post = self._orig_post
+        relay._get = self._orig_get
         relay._reset_state()
         for k, v in self._old.items():
             if v is None:
