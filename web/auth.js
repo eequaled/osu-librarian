@@ -20,6 +20,21 @@ export function buildRelayAuthorizeUrl(relayUrl, relayClientId, ticket, port) {
     + `&state=${encodeURIComponent(`${ticket}.${port}`)}`;
 }
 
+/* Default-port fallback: location.port is "" on :80/:443, but the relay
+ * state needs an explicit "<ticket>.<port>". */
+export function relayPort(loc) {
+  if (loc.port) return String(loc.port);
+  return loc.protocol === "https:" ? "443" : "80";
+}
+
+/* Mirror of the relay's parse_state(): ticket is 64 hex chars, port 1-65535. */
+export function validRelayTarget(ticket, port) {
+  if (typeof ticket !== "string" || !/^[0-9a-fA-F]{64}$/.test(ticket)) return false;
+  if (!/^\d+$/.test(String(port))) return false;
+  const n = Number(port);
+  return n >= 1 && n <= 65535;
+}
+
 async function fetchAuthStatus() {
   const r = await fetch("/api/auth/status");
   if (!r.ok) throw new Error(`status ${r.status}`);
@@ -170,7 +185,11 @@ export function initAuth(onLinked) {
           toast("linking service unreachable — use your own app below", "error");
           return;
         }
-        const port = window.location.port || "";
+        const port = relayPort(window.location);
+        if (!validRelayTarget(ticket, port)) {
+          toast("cannot determine this tab's port — use your own app below", "error");
+          return;
+        }
         window.open(
           buildRelayAuthorizeUrl(relayUrl, relayClientId, ticket, port),
           "_blank",
