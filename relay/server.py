@@ -190,6 +190,19 @@ def callback_url() -> str:
     return public_url + "/auth/callback"
 
 
+def _config_error() -> str | None:
+    """Human-readable misconfiguration reason, or None when configured.
+
+    Checks OSU_CLIENT_ID / OSU_CLIENT_SECRET / RELAY_PUBLIC_URL presence.
+    (HTTPS shape is checked separately.)
+    """
+    client_id, client_secret, public_url, _port = get_config()
+    if not client_id or not client_secret or not public_url:
+        return ("relay not configured: missing OSU_CLIENT_ID/"
+                "OSU_CLIENT_SECRET/RELAY_PUBLIC_URL")
+    return None
+
+
 def purge_expired(now: float | None = None) -> int:
     """Delete expired tickets + prune old rate-limit entries. Returns # purged."""
     if now is None:
@@ -456,6 +469,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_pair(self) -> None:
         self._discard_body()
+        if _config_error() is not None:
+            return self._send_json(503, {"error": "relay_not_configured"},
+                                   allow_cors=True)
         ip = _client_key(self)
         now = _now()
         with _lock:
@@ -622,6 +638,10 @@ def _sweeper_loop(stop: threading.Event, interval: float = 60.0) -> None:
 
 def serve(port: int = 8099, bind: str = "0.0.0.0") -> None:
     """Run the relay forever (plus a 60s expiry sweeper thread)."""
+    err = _config_error()
+    if err is not None:
+        print(f"relay misconfigured: {err}", file=sys.stderr, flush=True)
+        raise SystemExit(1)
     stop = threading.Event()
     sweeper = threading.Thread(target=_sweeper_loop, args=(stop,), daemon=True)
     sweeper.start()
@@ -640,6 +660,10 @@ def serve(port: int = 8099, bind: str = "0.0.0.0") -> None:
 
 
 def main() -> int:
+    err = _config_error()
+    if err is not None:
+        print(f"relay misconfigured: {err}", file=sys.stderr, flush=True)
+        return 1
     _cid, _sec, _url, port = get_config()
     serve(port)
     return 0
