@@ -360,6 +360,33 @@ def _db_only_rows(paths: dict) -> list:
     return out
 
 
+def _realm_fingerprint(realm_export: str, lazer_dir: str):
+    """JSON-serializable realm state for the lazer fingerprint (mtime + hash)."""
+    if realm_export:
+        try:
+            st = os.stat(realm_export)
+        except OSError:
+            return []
+        try:
+            h = hashlib.sha1()
+            with open(realm_export, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    h.update(chunk)
+            return [st.st_mtime_ns, st.st_size, h.hexdigest()[:16]]
+        except OSError:
+            try:
+                return [st.st_mtime_ns, st.st_size]
+            except OSError:
+                return []
+    try:
+        if lazer_dir:
+            st = os.stat(os.path.join(lazer_dir, "client.realm"))
+            return [st.st_mtime_ns, st.st_size]
+    except OSError:
+        pass
+    return []
+
+
 def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
     from .lazer_scanner import (_is_osu_blob, load_realm_export, parse_lazer_blob)
     lazer_dir = paths.get("lazer_dir", "") or ""
@@ -384,6 +411,7 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
                 realm = normalize_realm_dump(dump)
         except Exception:
             pass
+    fp_new["realm"] = _realm_fingerprint(effective_export, lazer_dir)
 
     def _blobs() -> list[str]:
         out = []
@@ -407,19 +435,22 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
         _carry_online(old_rows, rows)
     else:
         _unchanged, changed, _deleted, _dbs = cachemod.diff_fingerprints(old_fp, fp_new)
+        realm_changed = old_fp.get("realm") != fp_new.get("realm")
         old_by_key = {k: r for k, r in zip(old_keys, old_rows) if k is not None}
         new_keys = sorted(set(fp_new["files"]))
         job.total, job.done = len(new_keys) or 1, 0
         keys, rows = [], []
         for rel in new_keys:
             old = old_by_key.get(rel)
-            if old is not None and rel not in changed:
+            if old is not None and rel not in changed and not realm_changed:
                 keys.append(rel)
                 rows.append(old)
             else:
                 full = os.path.join(files_dir, rel)
                 # Non-.osu blobs (audio/images) get no row; deleted files are
                 # dropped. done still ticks so progress never exceeds total.
+                # When only the realm changed we still re-parse to rejoin
+                # fresh played/grade/stars onto the reused rows.
                 if os.path.isfile(full) and _is_osu_blob(full):
                     keys.append(rel)
                     rows.append(parse_lazer_blob(full, realm).__dict__)
