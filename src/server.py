@@ -343,11 +343,24 @@ def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
 # ---- scans ----
 
 def _carry_online(old_rows: list[dict], new_rows: list[dict]) -> None:
-    """Keep played_online flags across re-parses (online state isn't on disk)."""
+    """Keep played_online flags across re-parses (online state isn't on disk).
+
+    Joins on the md5 id first; when a map was edited (new md5) fall back to
+    the stable beatmap_id so replayed/edited maps don't lose their flag.
+    """
     online = {r.get("id"): r.get("played_online", False) for r in old_rows}
+    by_bid: dict = {}
+    for r in old_rows:
+        bid = r.get("beatmap_id")
+        if bid not in (None, -1, 0) and bid not in by_bid:
+            by_bid[bid] = r.get("played_online", False)
     for r in new_rows:
         if r.get("id") in online:
             r["played_online"] = online[r["id"]]
+            continue
+        bid = r.get("beatmap_id")
+        if bid not in (None, -1, 0) and bid in by_bid:
+            r["played_online"] = by_bid[bid]
 
 
 def _scan_stable_incremental(job, paths: dict, fresh: bool) -> None:
