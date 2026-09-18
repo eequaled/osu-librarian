@@ -649,9 +649,10 @@ def run_scan(mode: str, fresh: bool) -> str:
     try:
         settings = load_settings()
         paths = library_paths(settings, mode)
-        fp = cachemod.fingerprint(mode, **paths)
-        total = len(fp.get("files", {})) or 1
-        job = registry.create("scan", total=total)
+        # Indeterminate total: the worker sets the real total once known
+        # (polled via /api/jobs/:id; frontend uses total||1), so the tree
+        # is fingerprinted only once inside the worker.
+        job = registry.create("scan", total=1)
     except BaseException:
         try:
             _scan_lock.release()
