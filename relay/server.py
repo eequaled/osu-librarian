@@ -56,8 +56,9 @@ OSU_TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 OSU_ME_URL = "https://osu.ppy.sh/api/v2/me/"
 
 TICKET_TTL = 600  # seconds
-RATE_LIMIT_MAX = 20  # POST /pair per IP ...
+RATE_LIMIT_MAX = 20  # per-IP per-endpoint ...
 RATE_LIMIT_WINDOW = 3600  # ... per hour
+CALLBACK_TICKET_MAX_ATTEMPTS = 10  # max exchanges attempted per ticket
 REQUEST_TIMEOUT = 15  # seconds for all outbound osu! calls
 MAX_PAIR_BODY = 1_000_000  # cap on discarded POST /pair body bytes
 
@@ -68,13 +69,32 @@ class RelayError(Exception):
 
 # ---- in-memory state (never persisted) ----
 
-_tickets: dict[str, dict] = {}  # ticket -> {"created_at": float, "data": dict|None}
-_rate: dict[str, list[float]] = {}  # ip -> [request timestamps]
+_tickets: dict[str, dict] = {}  # ticket -> {"created_at": float, "data": dict|None, "attempts": int}
+_rate: dict[str, list[float]] = {}  # bucket key -> [request timestamps]
 _lock = threading.RLock()
 
 
 def _now() -> float:
     return time.time()
+
+
+def _client_key(handler) -> str:
+    """Direct peer IP for rate limiting (trusted-proxy XFF comes later)."""
+    try:
+        return handler.client_address[0] or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _bucket_limited(key: str, now: float) -> bool:
+    """Check-and-record a 20/hour bucket. Caller must hold _lock."""
+    seen = [t for t in _rate.get(key, []) if now - t < RATE_LIMIT_WINDOW]
+    if len(seen) >= RATE_LIMIT_MAX:
+        _rate[key] = seen
+        return True
+    seen.append(now)
+    _rate[key] = seen
+    return False
 
 
 def get_config() -> tuple[str, str, str, int]:
@@ -348,21 +368,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_pair(self) -> None:
         self._discard_body()
-        ip = self.client_address[0]
+        ip = _client_key(self)
         now = _now()
         with _lock:
-            seen = [t for t in _rate.get(ip, []) if now - t < RATE_LIMIT_WINDOW]
-            if len(seen) >= RATE_LIMIT_MAX:
-                _rate[ip] = seen
+            if _bucket_limited(ip, now):
                 return self._send_json(429, {"error": "rate_limited"}, allow_cors=True)
             ticket = secrets.token_hex(32)
-            _tickets[ticket] = {"created_at": now, "data": None}
-            seen.append(now)
-            _rate[ip] = seen
+            _tickets[ticket] = {"created_at": now, "data": None, "attempts": 0}
         return self._send_json(200, {"ticket": ticket, "expires_in": TICKET_TTL},
                                allow_cors=True)
 
     def _handle_callback(self, query: str) -> None:
+        ip = _client_key(self)
+        now = _now()
+        with _lock:
+            if _bucket_limited(f"callback:{ip}", now):
+                return self._send_json(429, {"error": "rate_limited"})
         qs = urllib.parse.parse_qs(query or "", keep_blank_values=True)
         code = (qs.get("code", [""])[0] or "").strip()
         state = (qs.get("state", [""])[0] or "").strip()
@@ -386,6 +407,14 @@ class Handler(BaseHTTPRequestHandler):
                 del _tickets[ticket]
                 return self._send_html(
                     400, "Authorization failed", "unknown or expired ticket")
+            attempts = entry.get("attempts", 0)
+            try:
+                attempts = int(attempts or 0)
+            except (TypeError, ValueError):
+                attempts = 0
+            if attempts >= CALLBACK_TICKET_MAX_ATTEMPTS:
+                return self._send_json(429, {"error": "rate_limited"})
+            entry["attempts"] = attempts + 1
 
         client_id, client_secret, public_url, _port = get_config()
         if not client_id or not client_secret or not public_url:
@@ -455,6 +484,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_redirect(location)
 
     def _handle_token(self, query: str) -> None:
+        ip = _client_key(self)
+        now = _now()
+        with _lock:
+            if _bucket_limited(f"token:{ip}", now):
+                return self._send_json(429, {"error": "rate_limited"})
         qs = urllib.parse.parse_qs(query or "", keep_blank_values=True)
         ticket = (qs.get("ticket", [""])[0] or "").strip()
         if not _is_hex_ticket(ticket):
