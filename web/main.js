@@ -97,24 +97,39 @@ function onRowClick(row, ev) {
 
 /* ---------- data loading ---------- */
 
-function showJob(label, jobPromise, onDone) {
+function showJob(label, jobPromise, onDone, onRetry) {
   const box = $("job-progress");
   $("job-label").textContent = label;
   $("job-bar").value = 0;
   box.hidden = false;
+  document.getElementById("job-retry")?.remove();
   return jobPromise.then(
     (j) => {
       // Show a clear "done" state, then get out of the way.
+      document.getElementById("job-retry")?.remove();
       $("job-label").textContent = `${label} complete`;
       $("job-bar").value = 100;
       setTimeout(() => {
         box.hidden = true;
+        document.getElementById("job-retry")?.remove();
       }, 2500);
       onDone?.(j);
     },
     (e) => {
-      box.hidden = true;
+      // Keep the failed bar visible for context, with a retry button next to
+      // it (same pattern as the list error panel below).
+      $("job-label").textContent = `${label} failed: ${e.message}`;
       toast(`${label} failed: ${e.message}`, "error");
+      if (onRetry) {
+        const retry = document.createElement("button");
+        retry.id = "job-retry";
+        retry.textContent = "retry";
+        retry.addEventListener("click", () => {
+          retry.remove();
+          onRetry();
+        });
+        box.appendChild(retry);
+      }
     },
   );
 }
@@ -183,7 +198,7 @@ function runScan(fresh = false) {
       $("job-bar").value = (100 * Math.min(j.done, total)) / total;
     });
   })();
-  showJob("scan", p, () => reloadLibrary()).finally(() => {
+  showJob("scan", p, () => reloadLibrary(), () => runScan(fresh)).finally(() => {
     scanning = false;
     $("scan-btn").disabled = false;
     if ($("scan-fresh")) $("scan-fresh").disabled = false;
@@ -343,17 +358,19 @@ function bindTopbar() {
   freshBox.id = "scan-fresh";
   freshLabel.append(freshBox, document.createTextNode(" fresh"));
   $("scan-btn").after(freshLabel);
-  $("online-btn").addEventListener("click", async () => {
-    try {
-      const id = await startOnlineCheck();
-      showJob("online check", pollJob(id, (j) => {
-        $("job-label").textContent = `online ${j.done}/${j.total || "…"}`;
-        if (j.total) $("job-bar").value = (100 * j.done) / j.total;
-      }), () => reloadLibrary());
-    } catch (e) {
-      toast(`online check: ${e.message}`, "error");
-    }
-  });
+  $("online-btn").addEventListener("click", runOnlineCheck);
+}
+
+async function runOnlineCheck() {
+  try {
+    const id = await startOnlineCheck();
+    showJob("online check", pollJob(id, (j) => {
+      $("job-label").textContent = `online ${j.done}/${j.total || "…"}`;
+      if (j.total) $("job-bar").value = (100 * j.done) / j.total;
+    }), () => reloadLibrary(), runOnlineCheck);
+  } catch (e) {
+    toast(`online check: ${e.message}`, "error");
+  }
 }
 
 async function switchMode(mode) {
