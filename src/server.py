@@ -11,9 +11,11 @@ Endpoints (this docstring is the canonical endpoint contract; docs/webui-spec.md
   POST /api/auth/code           {code} -> {ok, user_id}
    GET  /api/auth/callback       ?code=... (&error=...) -> HTML (OAuth redirect, auto-links)
    POST /api/auth/config         {client_id, client_secret} -> {ok:true}
-   GET  /api/auth/status         {linked, user_id, username, redirect_uri, configured,
+   GET  /api/auth/status         {linked, user_id, username, avatar_url,
+                                 redirect_uri, configured,
                                  relay: {url, client_id, available}}
    GET  /api/auth/relay-return   ?ticket=.. -> HTML (one-click relay return, saves token)
+  POST /api/auth/unlink         {} -> {ok} — deletes the stored token file
   POST /api/online-check        {} -> {job_id}
   GET  /api/reconciliation      {available, linked, total, local_played,
                                  online_only, unplayed, lazer_style_unplayed,
@@ -259,7 +261,7 @@ def valid_token(settings: Settings) -> str:
             new["obtained_at"] = time.time()
             if "refresh_token" not in new:
                 new["refresh_token"] = tok["refresh_token"]
-            for _k in ("user_id", "username"):
+            for _k in ("user_id", "username", "avatar_url"):
                 if _k not in new and _k in tok:
                     new[_k] = tok[_k]
             try:
@@ -271,6 +273,7 @@ def valid_token(settings: Settings) -> str:
                     except (TypeError, ValueError):
                         new["user_id"] = _me["id"]
                     new["username"] = _me.get("username", "")
+                    new["avatar_url"] = _me.get("avatar_url", "")
             except Exception:
                 pass
             _save_token(new)
@@ -305,6 +308,7 @@ def _persist_token(tok: dict) -> tuple[bool, dict | str]:
         except (TypeError, ValueError):
             tok["user_id"] = me["id"]
         tok["username"] = me.get("username", "")
+        tok["avatar_url"] = me.get("avatar_url", "")
         _save_token(tok)
         return True, {"user_id": tok.get("user_id", 0),
                       "username": tok.get("username", "")}
@@ -869,6 +873,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"linked": _token_linked(tok, s),
                                    "user_id": tok.get("user_id", 0),
                                    "username": tok.get("username", ""),
+                                   "avatar_url": tok.get("avatar_url", ""),
                                    "redirect_uri": s.api.redirect_uri,
                                    "configured": bool(s.api.client_id and s.api.client_secret),
                                    "relay": {"url": relay_url,
@@ -890,6 +895,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(413, {"error": "request body too large"})
         if not isinstance(body, dict):
             body = {}
+        if path == "/api/auth/unlink":
+            try:
+                os.remove(TOKEN_PATH)
+            except FileNotFoundError:
+                return self._json(200, {"ok": True, "was_linked": False})
+            except OSError as e:
+                return self._json(500, {"error": f"could not delete token: {e}"})
+            return self._json(200, {"ok": True, "was_linked": True})
         if path == "/api/scan":
             mode = body.get("mode") or get_mode()
             if mode not in ("stable", "lazer"):

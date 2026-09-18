@@ -91,6 +91,13 @@ export async function authUrl() {
   return data.url;
 }
 
+export async function unlinkAccount() {
+  const r = await fetch("/api/auth/unlink", { method: "POST" });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `unlink ${r.status}`);
+  return data;
+}
+
 export async function startOnlineCheck() {
   const r = await fetch("/api/online-check", { method: "POST" });
   const data = await r.json().catch(() => ({}));

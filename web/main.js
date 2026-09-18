@@ -1,6 +1,6 @@
 /* App wiring: state, filters, list, keyboard, scan/mode/online jobs. */
-import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
-import { initAuth, renderAccountChip } from "./auth.js";
+import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, unlinkAccount, useInstall } from "./api.js";
+import { initAuth, onUnlink, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
@@ -594,6 +594,15 @@ function main() {
     },
   });
   initAuth(() => boot());
+  onUnlink(async () => {
+    try {
+      await unlinkAccount();
+      toast("account unlinked");
+      boot();
+    } catch (e) {
+      toast(`unlink failed: ${e.message}`, "error");
+    }
+  });
   setupAuthDialogFocus();
   initShortcuts();
   const scBody = $("shortcuts-body");

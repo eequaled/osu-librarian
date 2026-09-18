@@ -21,7 +21,11 @@ button[aria-pressed="true"], .mode-switch button.active { background: #2c3c66; b
 .spacer { flex: 1; }
 .chip { font-size: 13px; color: var(--dim); border: 1px solid var(--line);
   border-radius: 20px; padding: 4px 10px; }
-.chip.linked { color: var(--good); border-color: var(--good); }
+.chip.linked { color: var(--good); border-color: var(--good); cursor: pointer; }
+.chip .avatar { border-radius: 50%; vertical-align: -4px; margin-right: 4px; }
+.chip .avatar-fallback { display: inline-block; width: 20px; height: 20px;
+  line-height: 20px; text-align: center; font-size: 11px; font-weight: bold;
+  background: var(--good); color: #10131c; margin-right: 4px; }
 .job { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--dim); }
 
 .layout { display: flex; flex: 1; min-height: 0; }

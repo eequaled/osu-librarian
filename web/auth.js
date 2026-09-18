@@ -67,6 +67,9 @@ async function saveAuthConfig(clientId, clientSecret) {
   return data;
 }
 
+/* Called by main.js: wires the chip's unlink action to the server call. */
+export function onUnlink(fn) { _unlinkHandler = fn; }
+
 export function initAuth(onLinked) {
   const dialog = document.getElementById("auth-dialog");
   const clientIdInput = document.getElementById("auth-client-id");
@@ -292,18 +295,37 @@ export function initAuth(onLinked) {
   });
 }
 
+let _unlinkHandler = null;
+
+/* Profile chip in the topbar: avatar (or monogram) + username when linked,
+ * "Link account" affordance when not. Click while linked toggles a small
+ * menu with the unlink action. Dispatches `auth-changed` on any render so
+ * other modules (profile consumers, health badge) can refresh. */
 export function renderAccountChip(auth) {
   const chip = document.getElementById("account-chip");
+  window.dispatchEvent(new CustomEvent("auth-changed", { detail: { auth } }));
   if (auth?.linked) {
     const who = auth.username
       ? `${auth.username} (${auth.user_id})`
       : (auth.user_id ? `linked · ${auth.user_id}` : "linked");
-    chip.textContent = who;
+    const initial = (auth.username || "?").trim().charAt(0).toUpperCase();
+    const img = auth.avatar_url
+      ? `<img class="avatar" src="${auth.avatar_url}" alt="" width="20" height="20">`
+      : `<span class="avatar avatar-fallback" aria-hidden="true">${initial}</span>`;
+    chip.innerHTML = `${img}<span>${who}</span>`;
     chip.title = who;
     chip.classList.add("linked");
+    chip.onclick = () => {
+      if (confirm(`Unlink ${auth.username || "this account"}?\n` +
+          "Online played flags stay until the next online check.")) {
+        (_unlinkHandler || (() => {}))();
+      }
+    };
   } else {
     chip.textContent = "not linked";
+    chip.title = "click “link account” to connect your osu! profile";
     chip.classList.remove("linked");
+    chip.onclick = () => document.getElementById("link-btn")?.click();
   }
   // Online check needs a linked account: keep the button disabled with a
   // tooltip until then instead of serving an inevitable error toast.
