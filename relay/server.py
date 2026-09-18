@@ -407,6 +407,10 @@ class Handler(BaseHTTPRequestHandler):
                 del _tickets[ticket]
                 return self._send_html(
                     400, "Authorization failed", "unknown or expired ticket")
+            data = entry.get("data")
+            if isinstance(data, dict) and data.get("access_token"):
+                return self._send_html(
+                    400, "Authorization failed", "ticket already exchanged")
             attempts = entry.get("attempts", 0)
             try:
                 attempts = int(attempts or 0)
@@ -471,6 +475,10 @@ class Handler(BaseHTTPRequestHandler):
                     del _tickets[ticket]
                 return self._send_html(
                     400, "Authorization failed", "unknown or expired ticket")
+            existing = entry.get("data")
+            if isinstance(existing, dict) and existing.get("access_token"):
+                return self._send_html(
+                    400, "Authorization failed", "ticket already exchanged")
             entry["data"] = {
                 "access_token": access,
                 "refresh_token": refresh,
