@@ -64,6 +64,7 @@ REQUEST_TIMEOUT = 15  # seconds for all outbound osu! calls
 HANDLER_TIMEOUT = 60  # seconds socket timeout per request (slowloris guard)
 MAX_PAIR_BODY = 1_000_000  # cap on discarded POST /pair body bytes
 MAX_TICKETS = 5000  # cap on in-memory ticket store (LRU-ish evict oldest)
+MAX_TOKEN_BODY = 16_384  # cap on POST /token body bytes (ticket is 64 chars)
 
 
 class RelayError(Exception):
@@ -348,6 +349,46 @@ def _get(url: str, token: str, timeout: float = REQUEST_TIMEOUT) -> dict:
     return obj
 
 
+def _pop_ticket_payload(ticket: str) -> dict | None:
+    """One-time consume of an exchanged ticket. Returns payload or None.
+
+    None means unknown/expired/pending (same 404 shape, no oracle).
+    Caller must NOT hold _lock (it is acquired here).
+    """
+    with _lock:
+        entry = _tickets.get(ticket)
+        if entry is None:
+            return None
+        try:
+            if _now() - float(entry.get("created_at", 0)) > TICKET_TTL:
+                try:
+                    del _tickets[ticket]
+                except KeyError:
+                    pass
+                return None
+        except (TypeError, ValueError):
+            try:
+                del _tickets[ticket]
+            except KeyError:
+                pass
+            return None
+        data = entry.get("data")
+        if not isinstance(data, dict) or not data.get("access_token"):
+            return None
+        try:
+            del _tickets[ticket]
+        except KeyError:
+            return None
+        return {
+            "access_token": data.get("access_token", ""),
+            "refresh_token": data.get("refresh_token", ""),
+            "expires_in": data.get("expires_in", 0),
+            "obtained_at": data.get("obtained_at", 0),
+            "user_id": data.get("user_id", 0),
+            "username": data.get("username", ""),
+        }
+
+
 # ---- HTTP handler ----
 
 
@@ -451,6 +492,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/pair":
             return self._handle_pair()
+        if path == "/token":
+            return self._handle_token_post()
         self._discard_body()
         return self._send_json(404, {"error": "not found"})
 
@@ -626,27 +669,110 @@ class Handler(BaseHTTPRequestHandler):
         ticket = (qs.get("ticket", [""])[0] or "").strip()
         if not _is_hex_ticket(ticket):
             return self._send_json(404, {"error": "unknown_or_expired_ticket"})
-        with _lock:
-            entry = _tickets.get(ticket)
-            if entry is None:
-                return self._send_json(404, {"error": "unknown_or_expired_ticket"})
-            if _now() - float(entry.get("created_at", 0)) > TICKET_TTL:
-                del _tickets[ticket]
-                return self._send_json(404, {"error": "unknown_or_expired_ticket"})
-            data = entry.get("data")
-            if not isinstance(data, dict) or not data.get("access_token"):
-                # Paired but no successful callback yet: same shape, no oracle.
-                return self._send_json(404, {"error": "unknown_or_expired_ticket"})
-            del _tickets[ticket]
-            payload = {
-                "access_token": data.get("access_token", ""),
-                "refresh_token": data.get("refresh_token", ""),
-                "expires_in": data.get("expires_in", 0),
-                "obtained_at": data.get("obtained_at", 0),
-                "user_id": data.get("user_id", 0),
-                "username": data.get("username", ""),
-            }
+        payload = _pop_ticket_payload(ticket)
+        if payload is None:
+            return self._send_json(404, {"error": "unknown_or_expired_ticket"})
         return self._send_json(200, payload)
+
+    def _read_token_ticket_from_body(self) -> str:
+        """Read ticket from POST /token body (JSON {"ticket"} or form)."""
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n <= 0:
+            return ""
+        if n > MAX_TOKEN_BODY:
+            self.close_connection = True
+            try:
+                self.rfile.read(MAX_TOKEN_BODY)
+            except Exception:
+                pass
+            return ""
+        try:
+            raw = self.rfile.read(n)
+        except Exception:
+            return ""
+        if not raw:
+            return ""
+        try:
+            text = raw.decode("utf-8", "replace")
+        except Exception:
+            return ""
+        try:
+            ctype = (self.headers.get("Content-Type", "") or "").lower()
+        except Exception:
+            ctype = ""
+        stripped = text.strip()
+        if "application/json" in ctype or stripped.startswith("{"):
+            try:
+                obj = json.loads(text or "null")
+            except ValueError:
+                obj = None
+            if isinstance(obj, dict):
+                val = obj.get("ticket", "")
+                if isinstance(val, str):
+                    return val.strip()
+                return ""
+            if "application/json" in ctype:
+                return ""
+        try:
+            qs = urllib.parse.parse_qs(text or "", keep_blank_values=True)
+        except Exception:
+            return ""
+        try:
+            return (qs.get("ticket", [""])[0] or "").strip()
+        except Exception:
+            return ""
+
+    def _handle_token_post(self) -> None:
+        ip = _client_key(self)
+        now = _now()
+        with _lock:
+            if _bucket_limited(f"token:{ip}", now):
+                # Drain body to keep keep-alive in sync (bounded).
+                try:
+                    self._discard_body_for_token()
+                except Exception:
+                    pass
+                return self._send_json(429, {"error": "rate_limited"})
+        ticket = self._read_token_ticket_from_body()
+        if not _is_hex_ticket(ticket):
+            # Fall back to query string for convenience; body is primary.
+            try:
+                q = urllib.parse.urlparse(self.path).query
+                qs = urllib.parse.parse_qs(q or "", keep_blank_values=True)
+                q_ticket = (qs.get("ticket", [""])[0] or "").strip()
+                if _is_hex_ticket(q_ticket):
+                    ticket = q_ticket
+            except Exception:
+                pass
+        if not _is_hex_ticket(ticket):
+            return self._send_json(404, {"error": "unknown_or_expired_ticket"})
+        payload = _pop_ticket_payload(ticket)
+        if payload is None:
+            return self._send_json(404, {"error": "unknown_or_expired_ticket"})
+        return self._send_json(200, payload)
+
+    def _discard_body_for_token(self) -> None:
+        """Bounded drain used when POST /token is rate-limited pre-read."""
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n <= 0:
+            return
+        if n > MAX_TOKEN_BODY:
+            self.close_connection = True
+            try:
+                self.rfile.read(MAX_TOKEN_BODY)
+            except Exception:
+                pass
+            return
+        try:
+            self.rfile.read(n)
+        except Exception:
+            pass
 
 
 def _sweeper_loop(stop: threading.Event, interval: float = 60.0) -> None:
