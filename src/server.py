@@ -1,9 +1,10 @@
 """Local web server: JSON API + static frontend. Stdlib only.
 
-Endpoints (see docs/webui-spec.md for the contract):
+Endpoints (this docstring is the canonical endpoint contract; docs/webui-spec.md is historical):
   GET  /                        web/index.html (+ static assets)
   GET  /api/status
   GET  /api/library             (ETag / If-None-Match -> 304)
+  GET  /api/art?id=..            background image (ETag / If-None-Match -> 304)
   POST /api/scan                {mode?, fresh?} -> {job_id}
   GET  /api/jobs/:id
   GET  /api/auth/url
