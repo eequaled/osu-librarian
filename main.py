@@ -22,6 +22,10 @@ def cmd_scan(a) -> int:
     mode = a.mode or s.mode
     if mode == "lazer":
         lazer_dir = a.lazer_dir or s.lazer_dir
+        if not lazer_dir:
+            print("error: no lazer directory given (pass --lazer-dir or set lazer_dir in settings.json); nothing scanned, no output written",
+                  file=sys.stderr)
+            return 2
         maps = scan_lazer(lazer_dir, a.realm_export or s.realm_export)
     else:
         songs = a.songs or s.songs_dir
@@ -29,6 +33,10 @@ def cmd_scan(a) -> int:
         scores = a.scores if a.scores is not None else s.scores_db
         if not songs and s.stable_dir:
             songs = os.path.join(s.stable_dir, "Songs")
+        if not songs:
+            print("error: no Songs folder given (pass --songs or set songs_dir/stable_dir in settings.json); nothing scanned, no output written",
+                  file=sys.stderr)
+            return 2
         maps = scan_stable(songs or "", osu_db or "", scores or "")
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(to_dict_list(maps), f, indent=1)
