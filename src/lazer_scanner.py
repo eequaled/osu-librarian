@@ -261,11 +261,16 @@ def normalize_realm_dump(raw: dict) -> dict:
                         ikey = int(key)
                     except (ValueError, TypeError):
                         ikey = None
-                if ikey is not None:
+                if ikey is not None or md5:
                     try:
-                        stars[ikey] = float(b.get("stars", b.get("starRating", 0.0)) or 0.0)
+                        _val = float(b.get("stars", b.get("starRating", 0.0)) or 0.0)
                     except (ValueError, TypeError):
-                        stars[ikey] = 0.0
+                        _val = 0.0
+                    if ikey is not None:
+                        stars[ikey] = _val
+                        stars[str(ikey)] = _val
+                    if md5:
+                        stars[md5] = _val
                 if b.get("plays", 0):
                     try:
                         if int(b.get("plays", 0) or 0):
@@ -364,7 +369,8 @@ def parse_lazer_blob(path: str, realm: dict | None = None) -> Beatmap:
     # Realm None (-3) means "no online status"; display as unknown.
     ranked = "unknown" if status in ("", "none") else status
     date_added = _lookup_by_beatmap(realm.get("dates", {}), bid, md5) or ""
-    stars = realm["stars"].get(bid, realm["stars"].get(str(bid), 0.0)) if bid != -1 else 0.0
+    _hit = _lookup_by_beatmap(realm.get("stars", {}), bid, md5)
+    stars = 0.0 if _hit is None else _hit
     try:
         stars = float(stars)
     except (ValueError, TypeError):
