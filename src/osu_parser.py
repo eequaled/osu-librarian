@@ -167,4 +167,7 @@ MODE_NAMES = {0: "osu", 1: "taiko", 2: "catch", 3: "mania"}
 
 
 def mode_name(mode: int) -> str:
-    return MODE_NAMES.get(int(mode), "osu")
+    try:
+        return MODE_NAMES.get(int(mode), "unknown")
+    except (TypeError, ValueError):
+        return "unknown"
