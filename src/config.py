@@ -79,29 +79,57 @@ def default_lazer_dir() -> str:
     return ""
 
 
+def _safe_int(v, default: int = 0) -> int:
+    try:
+        if v is None or v == "":
+            return default
+        return int(v)
+    except (TypeError, ValueError):
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return default
+
+
 def load_settings(path: str = "settings.json") -> Settings:
     if not os.path.exists(path):
         return Settings().resolved()
-    with open(path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
-    api = raw.get("api", {})
-    s = Settings(
-        mode=raw.get("mode", "stable"),
-        stable_dir=raw.get("stable_dir", ""),
-        songs_dir=raw.get("songs_dir", ""),
-        osu_db=raw.get("osu_db", ""),
-        scores_db=raw.get("scores_db", ""),
-        lazer_dir=raw.get("lazer_dir", ""),
-        realm_export=raw.get("realm_export", ""),
-        api=ApiSettings(
-            client_id=int(api.get("client_id", 0) or 0),
-            client_secret=api.get("client_secret", ""),
-            redirect_uri=api.get("redirect_uri", "http://localhost:8787/api/auth/callback"),
-            user_id=int(api.get("user_id", 0) or 0),
-            relay_url=str(api.get("relay_url", "") or ""),
-            relay_client_id=int(api.get("relay_client_id", 0) or 0),
-        ),
-    )
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"[warn] could not read settings {path!r} ({e}); using defaults",
+              file=sys.stderr)
+        return Settings().resolved()
+    try:
+        if not isinstance(raw, dict):
+            raise ValueError("settings root must be an object")
+        api = raw.get("api", {})
+        if not isinstance(api, dict):
+            api = {}
+        s = Settings(
+            mode=raw.get("mode", "stable"),
+            stable_dir=raw.get("stable_dir", ""),
+            songs_dir=raw.get("songs_dir", ""),
+            osu_db=raw.get("osu_db", ""),
+            scores_db=raw.get("scores_db", ""),
+            lazer_dir=raw.get("lazer_dir", ""),
+            realm_export=raw.get("realm_export", ""),
+            api=ApiSettings(
+                client_id=_safe_int(api.get("client_id", 0)),
+                client_secret=str(api.get("client_secret", "") or ""),
+                redirect_uri=str(api.get("redirect_uri",
+                                         "http://localhost:8787/api/auth/callback")
+                                   or "http://localhost:8787/api/auth/callback"),
+                user_id=_safe_int(api.get("user_id", 0)),
+                relay_url=str(api.get("relay_url", "") or ""),
+                relay_client_id=_safe_int(api.get("relay_client_id", 0)),
+            ),
+        )
+    except (ValueError, TypeError, AttributeError) as e:
+        print(f"[warn] invalid settings {path!r} ({e}); using defaults",
+              file=sys.stderr)
+        return Settings().resolved()
     return s.resolved()
 
 
