@@ -165,10 +165,11 @@ docs/webui-spec.md    build spec this app was implemented from (historical;
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests   # backend: 209 test methods in 49 files
+python3 -m unittest discover -s tests   # backend: 227 test methods in 51 files
                                         # (parsers, filters, cache/TTL, jobs,
                                         # API server, CLI, web e2e, store.js via node)
 python3 -m unittest discover -s relay   # relay: 59 test methods in 12 files
+sh scripts/check-web.sh                 # frontend syntax: node --check web/*.js
                                         # (tickets, rate limits, trust-proxy, scrubbing;
                                         # osu! is mocked, no network)
 ```

@@ -44,6 +44,10 @@ browser ──HTTP──> main.py web
 
 ### 2.1 API contract (frozen before parallel work — all agents code against this)
 
+> SUPERSEDED: the live contract is the `src/server.py` module docstring; new
+> endpoints (mode switch, detect, relay auth, reconciliation) were added after
+> this table was frozen.
+
 | Method | Path | Req body / query | Resp (JSON unless noted) |
 |---|---|---|---|
 | GET | `/api/status` | — | `{mode, songs_ok, db_ok, lazer_ok, counts:{diffs,sets,played,unplayed}, scan:{version, finished_at, incremental}, jobs:{active}}` |
@@ -99,6 +103,7 @@ agents may add optional ones but must not rename existing ones.
 
 ## 4. Workstreams (2–3 subagents)
 
+> SUPERSEDED: the web UI shipped; these workstream definitions are historical.
 Contracts in §2.1/§2.2 are frozen; agents work in parallel and integrate at the end.
 
 ### Agent 1 — Backend API + caching + jobs
@@ -148,6 +153,7 @@ run parallel.
 
 ## 5. File layout (final)
 
+> SUPERSEDED: see the Layout section of `docs/STATE.md` for the real tree.
 ```
 main.py                  + `web` subcommand
 src/server.py            HTTP API + static serving + ETag

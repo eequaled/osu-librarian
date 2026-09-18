@@ -1,7 +1,7 @@
 # osu! Librarian — project state (for future sessions)
 
-Last updated: 2026-09-17. Branch: main. Stack: Python 3.14 stdlib-only backend,
-vanilla-JS no-build frontend. 209 backend test methods (49 files) + 59 relay
+Last updated: 2026-09-18. Branch: main. Stack: Python 3.14 stdlib-only backend,
+vanilla-JS no-build frontend. 227 backend test methods (51 files) + 59 relay
 test methods (12 files).
 
 ## What it is
@@ -26,7 +26,7 @@ from the store, osu! API v2 account link + bulk online played check.
 - `web/` — index.html/styles.css + api/store/views/auth/bulk/main.js
 - `relay/` — hosted OAuth relay (stdlib, Dockerfile + fly.toml). See below.
 - `tests/` — full suite: `python3 -m unittest discover -s tests`; node logic
-  covered via tests/test_store_node.py (needs node); `node --check web/*.js`.
+  covered via tests/test_store_node.py (needs node); `sh scripts/check-web.sh`.
 - `docs/webui-spec.md` — STALE in places (predates mode/detect/relay). Don't
   trust blindly; server.py docstring is the real API contract.
 
@@ -54,6 +54,15 @@ from the store, osu! API v2 account link + bulk online played check.
 - Known open product question from user history: librarian unplayed (3535) vs
   lazer "by rank" unplayed (3025) — believed to be 510 online-only scores;
   online check after linking should confirm. Sidebar now splits local/online.
+
+## Audit status (2026-09-18)
+- The 151-finding audit is fully executed through S/A/B/C/D tiers. F held 6
+  verified non-bugs. Remaining product ideas live in `specs/` (three specs:
+  audit-cd-cleanup, unplayed-count-reconciliation, product-backlog N4/N6/N8/
+  N10/N11) — requirements/design/tasks each, written for spec-driven execution.
+- Subagent tooling: this harness has no spawn tool and the `codebuff` CLI
+  (v1.0.688 via npx) requires interactive login — parallel work stays in
+  orchestrator/streams mode with per-stream commits.
 
 ## Conventions for this repo
 - Orchestrator mode: user asked that work be split across Task subagents and
