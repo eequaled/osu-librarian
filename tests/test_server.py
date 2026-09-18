@@ -127,7 +127,11 @@ class ServerTests(unittest.TestCase):
         code, _, _ = _req("POST", self.url("/api/scan"), {"mode": "bogus"})
         self.assertEqual(code, 400)
         code, _, body = _req("POST", self.url("/api/online-check"), {})
-        self.assertEqual(code, 400)  # no token linked in test env
+        # never blocks: a missing token fails the job instead of the request
+        self.assertEqual(code, 200)
+        job = self._wait_job(json.loads(body)["job_id"])
+        self.assertEqual(job["state"], "error", job)
+        self.assertIn("link the account again", job["error"])
 
 
 if __name__ == "__main__":

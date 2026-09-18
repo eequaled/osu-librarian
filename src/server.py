@@ -542,23 +542,33 @@ def run_scan(mode: str, fresh: bool) -> str:
 
 
 def run_online_check() -> tuple[str, str]:
-    """Returns (job_id, error)."""
-    settings = load_settings()
-    token = valid_token(settings)
-    if not token:
-        return "", "account not linked — POST /api/auth/code first"
-    user_id = _load_token().get("user_id") or settings.api.user_id
-    if not user_id:
-        return "", "user id unknown — link account again"
-    keys, rows, fp = cachemod.load_scan(get_mode())
-    if not rows:
-        return "", "library empty — run a scan first"
+    """Returns (job_id, error).
+
+    Only the scan-lock probe runs on the request thread so POST returns
+    immediately. Token refresh (up to ~30s of network) plus all validation
+    runs inside the worker; a dead/missing token fails the JOB with a clear
+    message instead of blocking the response.
+    """
     if not _scan_lock.acquire(blocking=False):
         return "", "scan already in progress"
 
     def _fn(job):
         try:
             from .osu_api import mark_online_played
+            # Blocking refresh lives here (worker thread), never on requests.
+            settings = load_settings()
+            token = valid_token(settings)
+            if not token:
+                raise RuntimeError("account not linked or session expired — "
+                                   "link the account again via the app dialog")
+            user_id = _load_token().get("user_id") or settings.api.user_id
+            if not user_id:
+                raise RuntimeError("user id unknown — "
+                                   "link the account again via the app dialog")
+            mode = get_mode()
+            keys, rows, fp = cachemod.load_scan(mode)
+            if not rows:
+                raise RuntimeError("library empty — run a scan first")
             maps = from_dict_list(rows)
             checkable = sum(1 for b in maps if b.beatmap_id not in (None, -1, 0))
             job.total = checkable
@@ -573,7 +583,7 @@ def run_online_check() -> tuple[str, str]:
                 job.meta = stats
             except Exception:
                 pass
-            _save_scan_atomic(get_mode(), keys, to_dict_list(maps), fp)
+            _save_scan_atomic(mode, keys, to_dict_list(maps), fp)
         finally:
             try:
                 _scan_lock.release()
