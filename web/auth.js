@@ -152,26 +152,35 @@ export function initAuth(onLinked) {
   });
 
   if (relayBtn) {
+    let pairing = false;
     relayBtn.addEventListener("click", async () => {
-      let ticket = "";
+      if (pairing) return; // ignore double-clicks while /pair is in flight
+      pairing = true;
+      relayBtn.disabled = true;
       try {
-        const r = await fetch(`${String(relayUrl).replace(/\/+$/, "")}/pair`, {
-          method: "POST",
-        });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok || !data.ticket) throw new Error(data.error || `pair ${r.status}`);
-        ticket = data.ticket;
-      } catch {
-        toast("linking service unreachable — use your own app below", "error");
-        return;
+        let ticket = "";
+        try {
+          const r = await fetch(`${String(relayUrl).replace(/\/+$/, "")}/pair`, {
+            method: "POST",
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok || !data.ticket) throw new Error(data.error || `pair ${r.status}`);
+          ticket = data.ticket;
+        } catch {
+          toast("linking service unreachable — use your own app below", "error");
+          return;
+        }
+        const port = window.location.port || "";
+        window.open(
+          buildRelayAuthorizeUrl(relayUrl, relayClientId, ticket, port),
+          "_blank",
+          "noopener",
+        );
+        startPolling();
+      } finally {
+        pairing = false;
+        relayBtn.disabled = false;
       }
-      const port = window.location.port || "";
-      window.open(
-        buildRelayAuthorizeUrl(relayUrl, relayClientId, ticket, port),
-        "_blank",
-        "noopener",
-      );
-      startPolling();
     });
   }
 
