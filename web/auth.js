@@ -80,6 +80,9 @@ export function initAuth(onLinked) {
   let pollTimer = 0;
   let relayUrl = "";
   let relayClientId = 0;
+  // Status fetch failed: buttons keep their last-known state (a failed fetch
+  // says nothing about the server config), so only notify once + hint retry.
+  let statusFailNotified = false;
 
   const callbackUrl = () => callbackInput.value;
 
@@ -95,10 +98,16 @@ export function initAuth(onLinked) {
     try {
       st = await fetchAuthStatus();
     } catch {
-      authorizeBtn.disabled = true;
-      if (relayBtn) relayBtn.disabled = true;
+      if (!statusFailNotified) {
+        statusFailNotified = true;
+        toast("cannot reach server — auth buttons unchanged, close and reopen to retry", "error");
+      }
+      if (relayHint && !relayHint.textContent) {
+        relayHint.textContent = "could not load status — close and reopen to retry.";
+      }
       return null;
     }
+    statusFailNotified = false;
     authorizeBtn.disabled = !st.configured;
     // One-click section: enabled only when the relay is configured server-side.
     relayUrl = st?.relay?.url || "";
