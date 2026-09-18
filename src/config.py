@@ -1,6 +1,7 @@
 """Shared settings: stable|lazer mode + path auto-detection (stdlib only)."""
 from __future__ import annotations
 
+import glob
 import json
 import os
 import sys
@@ -58,12 +59,40 @@ def default_stable_dir() -> str:
     if sys.platform == "darwin":
         return "/Applications/osu!.app/Contents/Resources/drive_c/Program Files/osu!"
     # linux (stable via wine) — common locations
-    for cand in (
-        os.path.expanduser("~/.wine/drive_c/users/$USER/Local Settings/Application Data/osu!"),
-        os.path.expanduser("~/.local/share/osu-stable"),
-    ):
-        if os.path.isdir(cand):
-            return cand
+    local_share = os.path.expanduser("~/.local/share/osu-stable")
+    if os.path.isdir(local_share):
+        return local_share
+    # Wine: each prefix keeps per-user dirs under
+    #   drive_c/users/*/AppData/Local/osu!   (modern, cf. detect.py:81)
+    #   drive_c/users/*/Local Settings/Application Data/osu!  (legacy XP)
+    # Never interpolate a literal dollar-USER env name: glob "*" instead.
+    home = os.path.expanduser("~")
+    prefixes = [os.path.join(home, ".wine")]
+    try:
+        prefixes += sorted(glob.glob(os.path.join(home, ".wine*")))
+    except Exception:
+        pass
+    if os.environ.get("WINEPREFIX"):
+        prefixes.append(os.environ["WINEPREFIX"])
+    seen = set()
+    for pre in prefixes:
+        norm = os.path.normpath(pre)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        for pat in (
+            os.path.join(norm, "drive_c", "users", "*", "AppData",
+                         "Local", "osu!"),
+            os.path.join(norm, "drive_c", "users", "*", "Local Settings",
+                         "Application Data", "osu!"),
+        ):
+            try:
+                hits = sorted(glob.glob(pat))
+            except Exception:
+                hits = []
+            for cand in hits:
+                if os.path.isdir(cand):
+                    return cand
     return ""
 
 
