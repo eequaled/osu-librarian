@@ -257,15 +257,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- low-level senders --
 
-    def _send_json(self, code: int, obj: dict) -> None:
+    def _send_json(self, code: int, obj: dict, allow_cors: bool = False) -> None:
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        # Browsers call /pair cross-origin (localhost app -> public relay).
-        # Safe to allow: auth uses one-time random tickets, no cookies.
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Browsers call POST /pair cross-origin (localhost app -> public relay).
+        # Only /pair needs ACAO:* — /token carries bearer tokens and must
+        # never be readable cross-origin.
+        if allow_cors:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        if getattr(self, "close_connection", False):
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -310,6 +314,9 @@ class Handler(BaseHTTPRequestHandler):
     # -- routing --
 
     def do_OPTIONS(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path != "/pair":
+            return self._send_json(404, {"error": "not found"})
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -330,7 +337,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/health":
-            return self._send_json(200, {"ok": True})
+            return self._send_json(200, {"ok": True}, allow_cors=True)
         if path == "/token":
             return self._handle_token(parsed.query)
         if path == "/auth/callback":
@@ -347,12 +354,13 @@ class Handler(BaseHTTPRequestHandler):
             seen = [t for t in _rate.get(ip, []) if now - t < RATE_LIMIT_WINDOW]
             if len(seen) >= RATE_LIMIT_MAX:
                 _rate[ip] = seen
-                return self._send_json(429, {"error": "rate_limited"})
+                return self._send_json(429, {"error": "rate_limited"}, allow_cors=True)
             ticket = secrets.token_hex(32)
             _tickets[ticket] = {"created_at": now, "data": None}
             seen.append(now)
             _rate[ip] = seen
-        return self._send_json(200, {"ticket": ticket, "expires_in": TICKET_TTL})
+        return self._send_json(200, {"ticket": ticket, "expires_in": TICKET_TTL},
+                               allow_cors=True)
 
     def _handle_callback(self, query: str) -> None:
         qs = urllib.parse.parse_qs(query or "", keep_blank_values=True)
