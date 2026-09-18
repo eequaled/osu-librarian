@@ -21,6 +21,8 @@ import("./web/store.js").then(s => {
                      ranked:"all", sort:"title", view:"difficulty", ...o});
   const out = {
     unplayed: s.visibleMaps(maps, F({played:"unplayed"})).map(m => m.id),
+    onlineOnly: s.visibleMaps(maps, F({played:"online_only"})).map(m => m.id),
+    played: s.visibleMaps(maps, F({played:"played"})).map(m => m.id),
     mania: s.visibleMaps(maps, F({mode:"mania"})).map(m => m.id),
     stars: s.visibleMaps(maps, F({smin:4})).map(m => m.id),
     loved: s.visibleMaps(maps, F({ranked:"loved"})).map(m => m.id),
@@ -45,6 +47,8 @@ class StoreJsTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
         self.assertEqual(out["unplayed"], ["b"])
+        self.assertEqual(out["onlineOnly"], ["c"])
+        self.assertEqual(out["played"], ["a", "c"])
         self.assertEqual(out["mania"], ["c"])
         self.assertEqual(out["stars"], ["a"])
         self.assertEqual(out["loved"], ["c"])

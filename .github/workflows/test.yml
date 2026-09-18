@@ -13,6 +13,8 @@ jobs:
           node-version: "22"
       - name: python tests
         run: python3 -m unittest discover -s tests
+      - name: python tests are node-complete (no silent skips)
+        run: python3 -m unittest tests.test_store_node -v
       - name: relay tests
         run: python3 -m unittest discover -s relay
       - name: web syntax
