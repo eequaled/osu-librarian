@@ -1,5 +1,5 @@
 /* App wiring: state, filters, list, keyboard, scan/mode/online jobs. */
-import { detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
+import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, defaultFilters, loadPrefs, savePrefs, summarize } from "./store.js";
@@ -40,7 +40,9 @@ function isSelected(row) {
 }
 
 function refresh(persist = true) {
-  const key = JSON.stringify([state.filters, state.maps.length]);
+  // cachedVersion() is the in-memory /api/library ETag: it busts on any
+  // content change (including online-check flag flips) with no extra fetch.
+  const key = JSON.stringify([state.filters, state.maps.length, cachedVersion()]);
   if (key !== state.memoKey) {
     state.rows = buildRows(state.maps, state.filters, state.expanded);
     state.memoKey = key;
