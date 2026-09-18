@@ -811,6 +811,7 @@ class Handler(BaseHTTPRequestHandler):
                     "<h1>Authorization failed</h1>"
                     f"<p>{html.escape(reason)}</p>"
                     "<p>You can close this tab and return to osu! Librarian.</p>"
+                    "<script>try{if(window.opener){window.opener.postMessage({type:\"osu-librarian-linked\"},location.origin);}}catch(e){}</script>"
                     "</body></html>")
             return self._send_html(400, page)
 
@@ -834,6 +835,7 @@ class Handler(BaseHTTPRequestHandler):
                 "<title>Account linked</title></head><body>"
                 f"<h1>Account linked as {html.escape(display)}</h1>"
                 "<p>Account linked. Close this tab and return to osu! Librarian.</p>"
+                "<script>try{if(window.opener){window.opener.postMessage({type:\"osu-librarian-linked\"},location.origin);}}catch(e){}</script>"
                 "</body></html>")
         return self._send_html(200, page)
 
