@@ -104,6 +104,20 @@ def valid_token(settings: Settings) -> str:
             new["obtained_at"] = time.time()
             if "refresh_token" not in new:
                 new["refresh_token"] = tok["refresh_token"]
+            for _k in ("user_id", "username"):
+                if _k not in new and _k in tok:
+                    new[_k] = tok[_k]
+            try:
+                from .osu_api import get_me as _get_me
+                _me = _get_me(new.get("access_token", ""))
+                if isinstance(_me, dict) and _me.get("id"):
+                    try:
+                        new["user_id"] = int(_me["id"])
+                    except (TypeError, ValueError):
+                        new["user_id"] = _me["id"]
+                    new["username"] = _me.get("username", "")
+            except Exception:
+                pass
             _save_token(new)
             return new.get("access_token", "")
         except Exception:
