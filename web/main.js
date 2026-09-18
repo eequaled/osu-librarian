@@ -80,6 +80,7 @@ function onRowClick(row, ev) {
     for (let i = a; i <= b; i++) {
       const r = state.rows[i];
       if (r.type === "map") state.selection.add(r.map.id);
+      else for (const m of r.set.maps) state.selection.add(m.id);
     }
   } else {
     toggleRow(row);
