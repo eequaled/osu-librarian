@@ -82,16 +82,22 @@ python3 main.py scan --mode lazer --lazer-dir "~/.local/share/osu" --out library
 |---|---|---|
 | GET | `/api/status` | mode, path checks, counts, cache + job + auth state |
 | GET | `/api/library` | `{version, maps}` + ETag → `304` |
+| GET | `/api/art?id=..` | background image for one row + ETag → `304` |
 | POST | `/api/scan` | `{mode?, fresh?}` → `{job_id}` (background, incremental) |
 | POST | `/api/mode` | `{mode}` switch without scanning |
-| GET | `/api/jobs/:id` | `{state, done, total, error?}` |
+| GET | `/api/jobs/:id` | `{state, done, total, meta?, error?}` (`meta` carries online-check stats) |
 | GET | `/api/auth/url` | authorize URL from settings creds |
-| POST | `/api/auth/code` | `{code}` → token stored server-side (`0600`) |
-| GET | `/api/auth/status` | `{linked, user_id}` |
-| POST | `/api/online-check` | background bulk score check → `{job_id}` |
+| POST | `/api/auth/code` | `{code}` → `{ok, user_id}`, token stored server-side (`0600`) |
+| GET | `/api/auth/callback` | OAuth redirect target (`?code=..` / `?error=..`) → HTML, auto-links |
+| POST | `/api/auth/config` | `{client_id, client_secret}` save BYO creds → `{ok: true}` |
+| GET | `/api/auth/status` | `{linked, user_id, username, redirect_uri, configured, relay: {url, client_id, available}}` |
+| GET | `/api/auth/relay-return` | one-click relay return (`?ticket=..`) → HTML, saves token |
+| POST | `/api/online-check` | `{}` → `{job_id}` at once (non-blocking; link/token failures land on the job, polled via `/api/jobs/:id`) |
 | POST | `/api/export` | `{ids, format: json\|txt\|collection}` → download |
 | GET | `/api/detect` | installs found on this machine |
 | POST | `/api/use-install` | `{kind, path}` adopt an install, persist to settings |
+
+Tokens live server-side in cwd-relative `.token.json` (`0600`), never sent to the client.
 
 Settings file `settings.json` stores mode + paths + api creds (see `settings.example.json`). The UI can switch modes without CLI flags.
 
