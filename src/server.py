@@ -93,8 +93,19 @@ def valid_token(settings: Settings) -> str:
     tok = _load_token()
     if not tok.get("access_token"):
         return ""
-    age = time.time() - float(tok.get("obtained_at", 0))
-    if age < int(tok.get("expires_in", 0)) - 60:
+    try:
+        _obtained = float(tok.get("obtained_at", 0))
+    except (TypeError, ValueError):
+        _obtained = 0.0
+    try:
+        _expires = int(tok.get("expires_in", 0))
+    except (TypeError, ValueError):
+        try:
+            _expires = int(float(tok.get("expires_in", 0)))
+        except (TypeError, ValueError):
+            _expires = 0
+    age = time.time() - _obtained
+    if age < _expires - 60:
         return tok["access_token"]
     if tok.get("refresh_token") and settings.api.client_id and settings.api.client_secret:
         from .osu_api import refresh_token as _rt
@@ -122,7 +133,7 @@ def valid_token(settings: Settings) -> str:
             return new.get("access_token", "")
         except Exception:
             return ""
-    return tok.get("access_token", "")
+    return ""
 
 
 def _persist_token(tok: dict) -> tuple[bool, dict | str]:
