@@ -106,7 +106,13 @@ Settings file `settings.json` stores mode + paths + api creds (see `settings.exa
 **osu!lazer (`%appdata%/osu`, `~/.local/share/osu`, `~/Library/Application Support/osu`):**
 - No `Songs/` folder. Content-addressable store: `files/<first>/<first-two>/<sha256>` + mappings in **`client.realm`** (Realm DB, not SQLite — can't be read with `sqlite3`/stdlib).
 - Realm tables: `BeatmapSet` (OnlineID, Status, DateAdded, Files, Beatmaps), `Beatmap` (OnlineID, DifficultyName, StarRating, BPM, Length, MD5Hash, Ruleset, Status), `Score` (BeatmapInfo link, BeatmapHash, Ruleset, OnlineID, stats). Played state = existence of `Score` rows for that `Beatmap`.
-- MVP lazer scan reads the hashed blobs directly (zero-dep) and treats Realm scores as optional: export with [`osu-lazer-db-reader`](https://github.com/yadPe/osu-lazer-db-reader) (`npx`) → `--realm-export realm.json`, or rely on the online API check.
+- Lazer scan reads the hashed blobs directly (zero-dep) and enriches them
+  automatically from `client.realm` via the bundled helper
+  (`tools/realm_export`, pinned `realm@20.2.0`, driven by
+  `src/realm_export.py`; needs node once for `npm install`). The live file
+  is never touched (a copy is exported read-only); without node it silently
+  falls back to blob-sniffing. A pre-made dump can still be passed as
+  `--realm-export realm.json`, or rely on the online API check.
 - Song select in lazer mirrors stable (search/group/sort), same filter syntax.
 
 **osu! API v2 (`https://osu.ppy.sh/api/v2`):**
@@ -161,7 +167,6 @@ python3 -m unittest discover -s relay   # relay: 59 test methods in 12 files
 
 ## Next steps (post-MVP)
 
-1. Full Realm read via bundled node helper (call `osu-lazer-db-reader` and import JSON: scores, DateAdded, collections).
-2. Proper star-rating calc (osu-tools /difficulty-calculator) instead of osu!.db-cached SR.
-3. Write `collection.db`/lazer collections from multiselect; delete/unplayed cleanup with safety confirm.
-4. Incremental rescan (mtime cache) for 50k+ map libraries.
+1. Proper star-rating calc (osu-tools /difficulty-calculator) instead of osu!.db-cached SR.
+2. Write `collection.db`/lazer collections from multiselect; delete/unplayed cleanup with safety confirm.
+3. Incremental rescan (mtime cache) for 50k+ map libraries.
