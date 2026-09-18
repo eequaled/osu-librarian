@@ -98,6 +98,13 @@ def _version(rows: list[dict], fp: dict) -> str:
     return cachemod.version_for(len(rows), fp, f"played={played}")
 
 
+def _clean_rows(rows) -> list[dict]:
+    """Drop corrupt cache rows so one bad row can't break status/library/export."""
+    if not isinstance(rows, list):
+        return []
+    return [r for r in rows if isinstance(r, dict) and r.get("id")]
+
+
 def library_paths(s: Settings, mode: str) -> dict:
     s = s.resolved()
     if mode == "lazer":
@@ -672,6 +679,7 @@ class Handler(BaseHTTPRequestHandler):
         s = load_settings()
         mode = get_mode()
         keys, rows, fp = cachemod.load_scan(mode)
+        rows = _clean_rows(rows)
         paths = library_paths(s, mode)
         if mode == "lazer":
             lok = os.path.isdir(os.path.join(paths["lazer_dir"], "files"))
@@ -697,6 +705,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _library(self):
         _keys, rows, fp = cachemod.load_scan(get_mode())
+        rows = _clean_rows(rows)
         version = _version(rows, fp) if fp else "empty"
         if self.headers.get("If-None-Match") == f'"{version}"':
             self.send_response(304)
@@ -849,6 +858,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "format must be json|txt|collection"})
         s = load_settings()
         _keys, rows, _fp = cachemod.load_scan(get_mode())
+        rows = _clean_rows(rows)
         # missing/None `ids` means the whole library; [] means empty export.
         ids = body.get("ids")
         if ids is None:
