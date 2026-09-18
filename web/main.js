@@ -165,15 +165,17 @@ async function reloadLibrary() {
 
 let scanning = false;
 
-function runScan() {
+function runScan(fresh = false) {
   if (scanning) {
     toast("scan already running");
     return;
   }
   scanning = true;
   $("scan-btn").disabled = true;
+  const freshBox = $("scan-fresh");
+  if (freshBox) freshBox.disabled = true;
   const p = (async () => {
-    const id = await startScan(state.mode, true); // scan always reads everything
+    const id = await startScan(state.mode, fresh);
     await pollJob(id, (j) => {
       const total = j.total || 1;
       $("job-label").textContent = `scan ${Math.min(j.done, total)}/${total}`;
@@ -183,6 +185,7 @@ function runScan() {
   showJob("scan", p, () => reloadLibrary()).finally(() => {
     scanning = false;
     $("scan-btn").disabled = false;
+    if ($("scan-fresh")) $("scan-fresh").disabled = false;
   });
 }
 
@@ -323,7 +326,16 @@ function bindTopbar() {
   paintMode();
   state.paintMode = paintMode;
 
-  $("scan-btn").addEventListener("click", () => runScan());
+  $("scan-btn").addEventListener("click", () => runScan($("scan-fresh")?.checked || false));
+  // Scans are incremental by default; tick this for a slow full rescan.
+  const freshLabel = document.createElement("label");
+  freshLabel.className = "hint";
+  freshLabel.title = "force a full rescan";
+  const freshBox = document.createElement("input");
+  freshBox.type = "checkbox";
+  freshBox.id = "scan-fresh";
+  freshLabel.append(freshBox, document.createTextNode(" fresh"));
+  $("scan-btn").after(freshLabel);
   $("online-btn").addEventListener("click", async () => {
     try {
       const id = await startOnlineCheck();
