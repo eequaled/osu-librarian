@@ -39,11 +39,16 @@ from .library import from_dict_list, summarize, to_dict_list
 
 TOKEN_PATH = ".token.json"
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+MAX_BODY_BYTES = 2 * 1024 * 1024
 
 registry = JobRegistry()
 _settings_lock = threading.Lock()
 _scan_lock = threading.Lock()
 _current_mode: str | None = None  # active mode for this server process
+
+
+class _BodyTooLarge(Exception):
+    pass
 
 
 def _atomic_write_json(path: str, obj, indent=None) -> None:
@@ -583,14 +588,36 @@ class Handler(BaseHTTPRequestHandler):
 
     def _read_json(self) -> dict:
         try:
-            n = int(self.headers.get("Content-Length", 0))
-        except ValueError:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
             n = 0
-        if not n:
+        if n <= 0:
             return {}
+        if n > MAX_BODY_BYTES:
+            self.close_connection = True
+            try:
+                self.rfile.read(min(n, 65536))
+            except Exception:
+                pass
+            raise _BodyTooLarge()
         try:
-            parsed = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            remaining = n
+            chunks = []
+            while remaining > 0:
+                chunk = self.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                if sum(len(c) for c in chunks) > MAX_BODY_BYTES:
+                    self.close_connection = True
+                    raise _BodyTooLarge()
+                remaining -= len(chunk)
+            parsed = json.loads(b"".join(chunks).decode("utf-8") or "{}")
+        except _BodyTooLarge:
+            raise
         except ValueError:
+            return {}
+        except Exception:
             return {}
         return parsed if isinstance(parsed, dict) else {}
 
@@ -638,7 +665,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        body = self._read_json()
+        try:
+            body = self._read_json()
+        except _BodyTooLarge:
+            return self._json(413, {"error": "request body too large"})
         if not isinstance(body, dict):
             body = {}
         if path == "/api/scan":
