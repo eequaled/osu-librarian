@@ -330,11 +330,22 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0) or 0)
         except (TypeError, ValueError):
             n = 0
-        if n > 0:
+        if n <= 0:
+            return
+        if n > MAX_PAIR_BODY:
+            # Oversized: never leave unread bytes for keep-alive desync.
+            # Drain up to the cap then close so the remainder is discarded
+            # with the connection instead of being parsed as a new request.
+            self.close_connection = True
             try:
-                self.rfile.read(min(n, MAX_PAIR_BODY))
+                self.rfile.read(MAX_PAIR_BODY)
             except Exception:
                 pass
+            return
+        try:
+            self.rfile.read(n)
+        except Exception:
+            pass
 
     # -- routing --
 
