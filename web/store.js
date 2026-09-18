@@ -53,9 +53,22 @@ export function countVisibleSelection(rows, selection) {
   return { total, sel };
 }
 
+/* Search-blob cache: building the blob for all ~4500 maps per keystroke tick
+ * is the slow part of filtering, so remember it per map id. Call
+ * clearSearchCache() when the library data is refreshed. */
+const blobCache = new Map();
+
+export function clearSearchCache() {
+  blobCache.clear();
+}
+
 export function searchBlob(m) {
-  return [m.artist, m.title, m.creator, m.diff, m.source, m.tags,
+  const key = m?.id ?? null;
+  if (key !== null && blobCache.has(key)) return blobCache.get(key);
+  const blob = [m.artist, m.title, m.creator, m.diff, m.source, m.tags,
           String(m.beatmap_id ?? "")].join(" ").toLowerCase();
+  if (key !== null) blobCache.set(key, blob);
+  return blob;
 }
 
 const SORTERS = {

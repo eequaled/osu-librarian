@@ -2,7 +2,7 @@
 import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
-import { buildRows, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
+import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
@@ -169,6 +169,7 @@ async function reloadLibrary() {
     clearListError();
     if (!data.notModified) {
       state.maps = data.maps;
+      clearSearchCache();
       state.memoKey = "";
     }
     renderStats(state.maps, summarize(state.maps), state.mode);

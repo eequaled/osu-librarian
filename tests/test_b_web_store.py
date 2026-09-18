@@ -33,6 +33,15 @@ import("./web/store.js").then(s => {
     scopeBody: s.listShortcutAllowed("BODY", false, true),
     scopeNothing: s.listShortcutAllowed("", false, false)
   };
+  const m = { id: 7, artist: "AAA", title: "TTT", creator: "CCC",
+              diff: "Hard", source: "", tags: "", beatmap_id: 42 };
+  const first = s.searchBlob(m);
+  m.title = "CHANGED";
+  out.cachedBlob = s.searchBlob(m);
+  out.blobHasTitle = first.includes("ttt");
+  s.clearSearchCache();
+  out.freshBlob = s.searchBlob(m);
+  out.noIdBlob = s.searchBlob({ artist: "zzz" });
   console.log(JSON.stringify(out));
 }).catch(e => { console.error(e); process.exit(1); });
 """
@@ -61,6 +70,10 @@ class StoreHelperTests(unittest.TestCase):
         self.assertTrue(out["scopeList"])
         self.assertTrue(out["scopeBody"])
         self.assertTrue(out["scopeNothing"])
+        self.assertTrue(out["blobHasTitle"])
+        self.assertNotIn("changed", out["cachedBlob"])
+        self.assertIn("changed", out["freshBlob"])
+        self.assertIn("zzz", out["noIdBlob"])
 
 
 if __name__ == "__main__":
