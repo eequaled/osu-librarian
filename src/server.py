@@ -47,6 +47,35 @@ _settings_lock = threading.Lock()
 _scan_lock = threading.Lock()
 _current_mode: str | None = None  # active mode for this server process
 
+_installs_cache: dict = {"at": 0.0, "items": []}
+_INSTALLS_TTL_S = 60.0
+
+
+def _cached_installs() -> list:
+    """Install detection re-globs wine prefixes; cache it briefly for polling."""
+    now = time.time()
+    try:
+        fresh = now - float(_installs_cache.get("at", 0.0)) < _INSTALLS_TTL_S
+    except (TypeError, ValueError):
+        fresh = False
+    if fresh and isinstance(_installs_cache.get("items"), list):
+        return _installs_cache["items"]
+    from .detect import find_installs
+    items = [i.to_dict() for i in find_installs()]
+    _installs_cache["at"] = now
+    _installs_cache["items"] = items
+    return items
+
+
+def _summarize_rows(rows: list) -> dict:
+    """Counts straight from raw scan dicts (no Beatmap objects to build)."""
+    diffs = len(rows)
+    sets = len({r.get("set_id") for r in rows if isinstance(r, dict)})
+    played = sum(1 for r in rows if isinstance(r, dict)
+                 and (r.get("played_local") or r.get("played_online")))
+    return {"diffs": diffs, "sets": sets, "played": played,
+            "unplayed": diffs - played}
+
 
 class _BodyTooLarge(Exception):
     pass
@@ -766,10 +795,9 @@ class Handler(BaseHTTPRequestHandler):
             ok = {"songs_ok": os.path.isdir(paths["songs_dir"]),
                   "db_ok": os.path.isfile(paths["osu_db"]) if paths["osu_db"] else False,
                   "lazer_ok": False}
-        counts = summarize(from_dict_list(rows)) if rows else {"diffs": 0, "sets": 0,
-                                                               "played": 0, "unplayed": 0}
+        counts = _summarize_rows(rows) if rows else {"diffs": 0, "sets": 0,
+                                                              "played": 0, "unplayed": 0}
         tok = _load_token()
-        from .detect import find_installs
         self._json(200, {
             "mode": mode, **ok, "counts": counts,
             "scan": {"version": _version(rows, fp) if fp else "none",
@@ -778,7 +806,7 @@ class Handler(BaseHTTPRequestHandler):
             "auth": {"linked": bool(tok.get("access_token")),
                      "user_id": tok.get("user_id", 0),
                      "username": tok.get("username", "")},
-            "installs": [i.to_dict() for i in find_installs()],
+            "installs": _cached_installs(),
         })
 
     def _library(self):
