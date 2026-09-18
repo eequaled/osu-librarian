@@ -286,4 +286,13 @@ export function renderAccountChip(auth) {
     chip.textContent = "not linked";
     chip.classList.remove("linked");
   }
+  // Online check needs a linked account: keep the button disabled with a
+  // tooltip until then instead of serving an inevitable error toast.
+  const onlineBtn = document.getElementById("online-btn");
+  if (onlineBtn) {
+    onlineBtn.disabled = !auth?.linked;
+    onlineBtn.title = auth?.linked
+      ? "check linked account scores via osu! API"
+      : "link your osu! account first";
+  }
 }

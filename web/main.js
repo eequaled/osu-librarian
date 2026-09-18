@@ -359,6 +359,9 @@ function bindTopbar() {
   freshLabel.append(freshBox, document.createTextNode(" fresh"));
   $("scan-btn").after(freshLabel);
   $("online-btn").addEventListener("click", runOnlineCheck);
+  // Disabled until boot's renderAccountChip() confirms a linked account.
+  $("online-btn").disabled = true;
+  $("online-btn").title = "link your osu! account first";
 }
 
 async function runOnlineCheck() {
