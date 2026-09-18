@@ -62,18 +62,50 @@ def _post(url: str, data: dict) -> dict:
         return json.loads(r.read().decode())
 
 
-def _get(url: str, token: str) -> tuple[int, object]:
+_RETRY_AFTER_CAP_S = 60.0
+
+
+def _retry_after_secs(exc) -> float | None:
+    try:
+        hdrs = getattr(exc, "headers", None)
+        if hdrs is None:
+            return None
+        try:
+            raw = hdrs.get("Retry-After")
+        except Exception:
+            return None
+        if raw is None:
+            return None
+        secs = float(str(raw).strip())
+        if secs != secs or secs < 0:
+            return None
+        return min(secs, _RETRY_AFTER_CAP_S)
+    except (TypeError, ValueError):
+        return None
+
+
+def _get(url: str, token: str, _max_retries: int = 3,
+           _backoff_base: float = 0.4) -> tuple[int, object]:
     req = urllib.request.Request(url, headers={
         "Accept": "application/json", "Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, json.loads(r.read().decode() or "null")
-    except urllib.error.HTTPError as e:
+    for attempt in range(_max_retries + 1):
         try:
-            body = e.read().decode()
-        except Exception:
-            body = ""
-        return e.code, {"error": body}
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.status, json.loads(r.read().decode() or "null")
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode()
+            except Exception:
+                body = ""
+            if e.code == 429 or 500 <= e.code < 600:
+                if attempt < _max_retries:
+                    delay = _retry_after_secs(e)
+                    if delay is None:
+                        delay = min(_backoff_base * (2 ** attempt),
+                                    _RETRY_AFTER_CAP_S)
+                    time.sleep(delay)
+                    continue
+            return e.code, {"error": body}
 
 
 def user_has_scores(beatmap_id: int, user_id: int, token: str, ruleset: str = "") -> bool | None:
