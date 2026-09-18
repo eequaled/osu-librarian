@@ -1141,6 +1141,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "no background"})
             h = h.lower()
             lazer_dir = library_paths(s, "lazer").get("lazer_dir", "") or ""
+            if not lazer_dir or not os.path.isdir(lazer_dir):
+                return self._json(404, {"error": "no background"})
             base = os.path.join(lazer_dir, "files")
             # Verified layout: files/<h0>/<h0:2>/<hash>
             full = os.path.normpath(os.path.join(base, h[0], h[:2], h))
