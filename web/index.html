@@ -23,6 +23,7 @@
   <button id="scan-btn">scan</button>
   <div id="job-progress" class="job" hidden><span id="job-label" role="status"></span><progress id="job-bar" max="100" value="0" aria-label="background job progress"></progress></div>
   <div class="spacer"></div>
+  <span id="health-badge" class="badge" title="relay and link health">…</span>
   <span id="account-chip" class="chip">not linked</span>
   <button id="link-btn">link account</button>
   <button id="online-btn" title="check linked account scores via osu! API">online check</button>
@@ -131,7 +132,7 @@
 
 <div id="toasts" aria-live="polite"></div>
 
-<script type="module" src="/main.js?v=5"></script>
+<script type="module" src="/main.js?v=6"></script>
 
 <dialog id="duplicates-dialog" aria-labelledby="duplicates-title">
   <h3 id="duplicates-title">Duplicate mapsets</h3>

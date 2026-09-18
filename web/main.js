@@ -5,6 +5,7 @@ import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { initDuplicates } from "./duplicates.js";
+import { initHealth } from "./health.js";
 import { initReconcile } from "./reconcile.js";
 import { initShortcuts, shortcutsHtml, toggleShortcutsDialog } from "./shortcuts.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
@@ -606,6 +607,7 @@ function main() {
   });
   setupAuthDialogFocus();
   initShortcuts();
+  initHealth();
   const scBody = $("shortcuts-body");
   if (scBody) scBody.innerHTML = shortcutsHtml();
   initReconcile({
