@@ -83,5 +83,48 @@ class ArtTests(unittest.TestCase):
                 server._art_index["by_id"] = {}
 
 
+    def test_index_rebuilds_when_scan_content_changes(self):
+        # Same fingerprint + same row count (hence same version) but
+        # different rows: the index must follow the scan file, not the version.
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                songs = os.path.join(tmp, "Songs")
+                folder = os.path.join(songs, "1 Artist - Title")
+                os.makedirs(folder)
+                with open(os.path.join(folder, "bg.jpg"), "wb") as f:
+                    f.write(b"img")
+                with open("settings.json", "w") as f:
+                    json.dump({"mode": "stable", "songs_dir": songs,
+                               "osu_db": "", "scores_db": ""}, f)
+                fp = {"files": {}}
+                server._save_scan_atomic(
+                    "stable", ["a.osu"],
+                    [{"id": "first", "set_id": "s1",
+                      "folder": "1 Artist - Title", "bg": "bg.jpg"}], fp)
+                server._art_index["key"] = None
+                server._art_index["by_id"] = {}
+                self.assertEqual(server._art_row_index(
+                    "stable", *self._load()[1:])["first"]["id"], "first")
+                server._save_scan_atomic(
+                    "stable", ["a.osu"],
+                    [{"id": "second", "set_id": "s1",
+                      "folder": "1 Artist - Title", "bg": "bg.jpg"}], fp)
+                keys, rows, fpx = self._load()
+                by_id = server._art_row_index("stable", rows, fpx)
+                self.assertIn("second", by_id)
+                self.assertNotIn("first", by_id)
+            finally:
+                os.chdir(cwd)
+                server._art_index["key"] = None
+                server._art_index["by_id"] = {}
+
+    @staticmethod
+    def _load():
+        from src import cache as cachemod
+        return cachemod.load_scan("stable")
+
+
 if __name__ == "__main__":
     unittest.main()

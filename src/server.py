@@ -81,11 +81,21 @@ _art_index: dict = {"key": None, "by_id": {}}
 
 
 def _art_row_index(mode: str, rows: list, fp: dict) -> dict:
-    """Row id -> row, rebuilt only when the scan version changes."""
+    """Row id -> row, rebuilt only when the scan changes.
+
+    Keyed by scan-file mtime + version: the version alone doesn't cover row
+    content (counts + fingerprint only), so two different scans could share
+    it and a version-only key would serve stale rows.
+    """
     try:
-        key = (mode, _version(rows, fp) if fp else f"empty:{len(rows)}")
+        mtime = os.stat(cachemod.cache_paths(mode)[0]).st_mtime_ns
+    except OSError:
+        mtime = 0
+    try:
+        ver = _version(rows, fp) if fp else f"empty:{len(rows)}"
     except Exception:
-        key = (mode, len(rows or []))
+        ver = len(rows or [])
+    key = (mode, mtime, ver, len(rows or []))
     if _art_index.get("key") != key:
         by_id = {}
         for r in rows or []:
