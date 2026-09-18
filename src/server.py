@@ -77,6 +77,25 @@ def _summarize_rows(rows: list) -> dict:
             "unplayed": diffs - played}
 
 
+_art_index: dict = {"key": None, "by_id": {}}
+
+
+def _art_row_index(mode: str, rows: list, fp: dict) -> dict:
+    """Row id -> row, rebuilt only when the scan version changes."""
+    try:
+        key = (mode, _version(rows, fp) if fp else f"empty:{len(rows)}")
+    except Exception:
+        key = (mode, len(rows or []))
+    if _art_index.get("key") != key:
+        by_id = {}
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("id") and r["id"] not in by_id:
+                by_id[r["id"]] = r
+        _art_index["key"] = key
+        _art_index["by_id"] = by_id
+    return _art_index["by_id"]
+
+
 class _BodyTooLarge(Exception):
     pass
 
@@ -1022,12 +1041,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             _keys, rows, _fp = cachemod.load_scan(mode)
         except Exception:
-            rows = []
-        row = None
-        for r in rows or []:
-            if isinstance(r, dict) and r.get("id") == row_id:
-                row = r
-                break
+            rows, _fp = [], {}
+        row = _art_row_index(mode, rows, _fp).get(row_id)
         if row is None:
             return self._json(404, {"error": "unknown id"})
         s = load_settings()
@@ -1073,17 +1088,25 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            with open(full, "rb") as f:
-                body = f.read()
+            f = open(full, "rb")
         except OSError:
             return self._json(404, {"error": "no background"})
         self.send_response(200)
         self.send_header("Content-Type", ctype or "application/octet-stream")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(st.st_size))
         self.send_header("ETag", etag)
         self.send_header("Cache-Control", "public,max-age=86400")
         self.end_headers()
-        self.wfile.write(body)
+        # Stream in chunks so big backgrounds never sit fully in RAM.
+        try:
+            with f:
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except (OSError, BrokenPipeError, ConnectionResetError):
+            pass
 
     def _static(self, path: str):
         if path == "/":
