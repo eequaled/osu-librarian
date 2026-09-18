@@ -711,9 +711,12 @@ class Handler(BaseHTTPRequestHandler):
         state = (qs.get("state", [""])[0] or "").strip()
         oauth_error = (qs.get("error", [""])[0] or "").strip()
         if oauth_error:
+            # Never reflect the provider's error value: attacker-controlled
+            # text rendered on this trusted domain enables phishing even
+            # when HTML-escaped, so use a static message instead.
             return self._send_html(
                 400, "Authorization failed",
-                f"Authorization failed/denied: {oauth_error[:200]}")
+                "Authorization denied or failed by the provider")
         if not code or not state:
             return self._send_html(400, "Authorization failed", "missing code or state")
         try:
