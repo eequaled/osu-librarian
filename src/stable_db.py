@@ -181,7 +181,6 @@ def read_osu_db(path: str) -> tuple[dict, list[OsuDbBeatmap]]:
         c.pos += n_tp * 17  # timing points are fixed 17 bytes
         m.beatmap_id = c.u32()
         c.u32()  # thread/set id field (beatmapset-ish); .osu BeatmapSetID is authoritative
-        c.u16() if False else None
         # grades per ruleset
         g = [c.u8(), c.u8(), c.u8(), c.u8()]
         m.grades = g

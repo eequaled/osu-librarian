@@ -629,20 +629,6 @@ def _scan_lazer_incremental(job, paths: dict, fresh: bool) -> None:
     job.done = job.total
 
 
-def _lazer_keys(lazer_dir: str, maps) -> list:
-    """Best-effort blob keys: positional match when counts agree, else None."""
-    files_dir = os.path.join(lazer_dir, "files")
-    found: list[str] = []
-    if files_dir and os.path.isdir(files_dir):
-        for root, _d, names in os.walk(files_dir):
-            for n in names:
-                found.append(os.path.join(root, n))
-        found.sort()
-    if len(found) == len(maps):
-        return [os.path.relpath(p, files_dir) for p in found]
-    return [None] * len(maps)
-
-
 def run_scan(mode: str, fresh: bool) -> str:
     """Start a scan job; '' when another scan/online-check is already running."""
     if not _scan_lock.acquire(blocking=False):

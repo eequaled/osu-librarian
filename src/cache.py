@@ -108,12 +108,6 @@ def save_scan(mode: str, keys: list, rows: list[dict], fp: dict) -> None:
     scan_path, manifest_path = cache_paths(mode)
     with open(scan_path, "w", encoding="utf-8") as f:
         json.dump({"keys": keys, "rows": rows}, f)
-
-
-def save_scan(mode: str, keys: list, rows: list[dict], fp: dict) -> None:
-    scan_path, manifest_path = cache_paths(mode)
-    with open(scan_path, "w", encoding="utf-8") as f:
-        json.dump({"keys": keys, "rows": rows}, f)
     try:
         with open(manifest_path, encoding="utf-8") as f:
             manifests = json.load(f)
