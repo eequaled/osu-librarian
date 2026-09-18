@@ -1,0 +1,27 @@
+# Implementation Plan — Audit C/D cleanup
+
+- [ ] 1. Stream 1 — relay polish
+  - [ ] 1.1 Merge `_post`/`_get` request logic behind a shared helper (signatures unchanged)
+  - [ ] 1.2 Ensure every rate-limited response carries the `Retry-After` header; add a header test per endpoint class if missing
+  - [ ] 1.3 Verify oversized-body 413 drains the request body on keep-alive; add regression test if missing
+  - [ ] 1.4 Fix relay/README.md loopback port docs to match what web/auth.js sends
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+- [ ] 2. Stream 2 — auth/frontend polish
+  - [ ] 2.1 Distinct 429 message in the auth dialog pair-error handling
+  - [ ] 2.2 Show a "closing pauses the link check" hint while polling is active
+  - [ ] 2.3 Skip overlapping status-poll ticks while a fetch is in flight
+  - [ ] 2.4 Remove dead `submitCode()` from web/api.js and its doc mentions
+  - [ ] 2.5 Verify username chip rendering; no change expected
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+- [ ] 3. Stream 3 — backend polish
+  - [ ] 3.1 Eliminate the double stable fingerprint computation in the scan path
+  - [ ] 3.2 Remove duplicated `save_scan` / dead `_lazer_keys` from src/cache.py (format unchanged)
+  - [ ] 3.3 Confirm `_parse_blob` is the single blob parser; route any inline duplicate through it
+  - _Requirements: 3.1, 3.2, 3.3_
+- [ ] 4. Stream 4 — docs truth
+  - [ ] 4.1 README: correct test counts and stale rows
+  - [ ] 4.2 STATE.md: mark audit tiers done, record final state and codebuff-CLI finding
+  - [ ] 4.3 webui-spec.md: per-section SUPERSEDED markers
+  - _Requirements: 4.1, 4.2, 4.3_
+- [ ] 5. Final gate — run all three suites, bump web `?v=` only if web/ changed, close out
+  - _Requirements: all_
