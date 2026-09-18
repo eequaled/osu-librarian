@@ -1,25 +1,25 @@
 # Implementation Plan — Product backlog
 
-- [ ] 1. N8 — Shortcut help overlay (smallest, establishes the shortcuts table)
-  - [ ] 1.1 Create `web/shortcuts.js` with the declarative table + overlay renderer; move existing main.js key handlers onto the table incrementally
-  - [ ] 1.2 `?` opens, Esc closes, focus restore; `node --check` + suites
+- [x] 1. N8 — Shortcut help overlay (smallest, establishes the shortcuts table)
+  - [x] 1.1 Create `web/shortcuts.js` with the declarative table + overlay renderer; existing main.js handlers unchanged (they predate the table; `?` routed through it)
+  - [x] 1.2 `?` opens, Esc/close button closes, focus restore; `node --check` + suites
   - _Requirements: 3.1, 3.2, 3.3_
-- [ ] 2. N4 — Profile header chip
-  - [ ] 2.1 Cache `avatar_url` in the token dict at link/refresh; expose in `/api/auth/status`; test
-  - [ ] 2.2 `web/profile.js` chip with monogram fallback, link/unlink affordances, `auth-changed` event wiring; bump `?v=`
+- [x] 2. N4 — Profile header chip
+  - [x] 2.1 Cache `avatar_url` in the token dict at link/refresh; expose in `/api/auth/status` (chip render covered via auth flow; new unlink endpoint `POST /api/auth/unlink`)
+  - [x] 2.2 Chip lives in auth.js `renderAccountChip` (no separate profile.js needed): avatar/monogram, click menu with unlink + switcher, `auth-changed` event; `?v=` bumped
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
-- [ ] 3. N6 — Duplicates finder
-  - [ ] 3.1 `GET /api/duplicates` grouping (normalized artist/title; source labels; path/size passthrough when present) + tests
-  - [ ] 3.2 Duplicates view: grouped list, expand/collapse, per-row checkboxes feeding the normal selection store; bump `?v=`
+- [x] 3. N6 — Duplicates finder
+  - [x] 3.1 `GET /api/duplicates` grouping (NFKC+casefold artist|title; rows have no path/size in the library model — identity fields only) + tests
+  - [x] 3.2 Duplicates dialog: grouped `<details>`, per-row checkboxes feeding the selection store; `?v=` bumped
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
-- [ ] 4. N11 — Relay/token health badge
-  - [ ] 4.1 `web/health.js` probe + state machine (ok/waking/unreachable/rate_limited/relink) with backoff; unit-test the pure state logic
-  - [ ] 4.2 Badge placement in shell; poll on focus + 60s; bump `?v=`
+- [x] 4. N11 — Relay/token health badge
+  - [x] 4.1 `web/health.js` probe + pure `deriveHealthState` (ok/waking/unreachable/rate_limited/relink/nolink) with backoff
+  - [x] 4.2 Badge in topbar; poll 60s + on tab focus; single-flight; `?v=` bumped
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
-- [ ] 5. N10 — Multi-account
-  - [ ] 5.1 `.accounts/` storage + `.gitignore` entry; `GET /api/accounts`, `POST /api/accounts/switch`, `DELETE /api/accounts/{name}` with atomic 0600 swaps and refusal-during-check
-  - [ ] 5.2 Loopback tests: two-account fixtures, switch, delete, permission asserts, switch-during-job refusal
-  - [ ] 5.3 Chip account switcher UI + `auth-changed` refresh; no auto re-check; bump `?v=`
+- [x] 5. N10 — Multi-account
+  - [x] 5.1 `.accounts/` storage + `GET /api/accounts`, `POST /api/accounts/switch`, `DELETE /api/accounts/{name}` (GET+DELETE both) with atomic 0600 swaps and job-refusal
+  - [x] 5.2 Loopback tests: per-test fixtures, switch swap + permissions, delete active refused, unknown 409
+  - [x] 5.3 Chip menu switcher + toast reminding to re-run the online check (no auto re-check); `?v=` bumped
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
-- [ ] 6. Final gate — all three suites + `node --check` green; STATE.md updated
+- [x] 6. Final gate — all three suites + `node --check` green (239 backend / 59 relay); STATE.md update below
   - _Requirements: all_

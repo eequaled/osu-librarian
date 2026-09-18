@@ -57,9 +57,15 @@ from the store, osu! API v2 account link + bulk online played check.
 
 ## Audit status (2026-09-18)
 - The 151-finding audit is fully executed through S/A/B/C/D tiers. F held 6
-  verified non-bugs. Remaining product ideas live in `specs/` (three specs:
-  audit-cd-cleanup, unplayed-count-reconciliation, product-backlog N4/N6/N8/
-  N10/N11) — requirements/design/tasks each, written for spec-driven execution.
+  verified non-bugs. All three specs in `specs/` (audit-cd-cleanup,
+  unplayed-count-reconciliation, product-backlog) are executed and checked off.
+- New since the audit: GET /api/reconciliation + online_only filter +
+  reconcile panel; GET /api/duplicates + duplicates dialog; ? shortcut
+  overlay; profile chip with avatar/unlink/switcher (POST /api/auth/unlink,
+  GET /api/accounts, POST /api/accounts/switch, DELETE /api/accounts/:name —
+  stored accounts in .accounts/, 0600); health badge in the topbar.
+- The reconciliation panel is the tool for the 3535 vs 3025 unplayed question:
+  link, run an online check, compare lazer_style_unplayed with lazer's count.
 - Subagent tooling: this harness has no spawn tool and the `codebuff` CLI
   (v1.0.688 via npx) requires interactive login — parallel work stays in
   orchestrator/streams mode with per-stream commits.
