@@ -4,6 +4,7 @@ import { initAuth, onUnlink, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
 import { buildRows, clearSearchCache, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
+import { initDuplicates } from "./duplicates.js";
 import { initReconcile } from "./reconcile.js";
 import { initShortcuts, shortcutsHtml, toggleShortcutsDialog } from "./shortcuts.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
@@ -619,6 +620,13 @@ function main() {
     startOnlineCheck,
   });
   $("reconcile-close")?.addEventListener("click", () => $("reconcile-dialog").close());
+  initDuplicates({
+    isSelectable: (id) => !!state.rows.find((r) => r.id === id),
+    toggleRow: (row) => {
+      toggleRow(row);
+      refresh(false);
+    },
+  });
 
   bindFilters();
   bindKeyboard();

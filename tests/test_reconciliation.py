@@ -76,6 +76,58 @@ class ReconciliationEndpointTests(unittest.TestCase):
         return f"http://127.0.0.1:{self.port}{p}"
 
 
+class DuplicatesEndpointTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.cwd = os.getcwd()
+        os.chdir(cls.tmp.name)
+        servermod._current_mode = None
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        rows = [
+            # same song, two set_ids -> one duplicate group
+            {"id": "a1", "set_id": "11", "artist": "Foo", "title": "Bar",
+             "diff": "Easy", "mode_name": "osu", "stars": 2.0},
+            {"id": "a2", "set_id": "22", "artist": "foo", "title": "BAR",
+             "diff": "Insane", "mode_name": "osu", "stars": 5.0},
+            # same set_id, different diffs -> NOT a duplicate
+            {"id": "b1", "set_id": "33", "artist": "Baz", "title": "Qux",
+             "diff": "Normal", "mode_name": "osu"},
+            {"id": "b2", "set_id": "33", "artist": "Baz", "title": "Qux",
+             "diff": "Hard", "mode_name": "osu"},
+            # different song entirely
+            {"id": "c1", "set_id": "44", "artist": "Zed", "title": "Solo",
+             "diff": "Easy", "mode_name": "taiko"},
+        ]
+        servermod._save_scan_atomic("stable",
+                                    [r["id"] for r in rows], rows,
+                                    {"files": {}})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        os.chdir(cls.cwd)
+        cls.tmp.cleanup()
+
+    def test_grouping(self):
+        _, _, body = _req("GET", self._url("/api/duplicates"))
+        j = json.loads(body)
+        self.assertEqual(j["group_count"], 1)
+        g = j["groups"][0]
+        self.assertEqual(g["key"], "foo | bar")
+        self.assertEqual({r["set_id"] for r in g["rows"]}, {"11", "22"})
+
+    def test_no_500_on_empty(self):
+        _, _, body = _req("GET", self._url("/api/duplicates"))
+        self.assertEqual(json.loads(body)["group_count"], 1)
+
+    def _url(self, p):
+        return f"http://127.0.0.1:{self.port}{p}"
+
+
 class OnlineOnlyFilterTests(unittest.TestCase):
     def _maps(self):
         return [

@@ -20,6 +20,7 @@ Endpoints (this docstring is the canonical endpoint contract; docs/webui-spec.md
   GET  /api/reconciliation      {available, linked, total, local_played,
                                  online_only, unplayed, lazer_style_unplayed,
                                  checking}
+  GET  /api/duplicates          {group_count, groups: [{key, rows: [...]}]}
   POST /api/export              {ids, format} -> file download
 """
 from __future__ import annotations
@@ -729,6 +730,48 @@ def run_online_check() -> tuple[str, str]:
     return job.id, ""
 
 
+def _norm_song_key(artist: str, title: str) -> str:
+    """NFKC + casefold + whitespace-collapse key for duplicate grouping."""
+    import unicodedata
+    raw = f"{artist or ''} {'|'} {title or ''}"
+    norm = unicodedata.normalize("NFKC", raw).casefold()
+    return " ".join(norm.split())
+
+
+def _duplicates_payload() -> dict:
+    """Group rows with the same normalized song but different set_ids.
+
+    Rows carry no on-disk path/size (the library model never stored them),
+    so groups show identity fields only; mode_name labels the source mode.
+    """
+    mode = get_mode()
+    _k, rows, _fp = cachemod.load_scan(mode)
+    rows = _clean_rows(rows)
+    buckets: dict[str, dict] = {}
+    for r in rows:
+        key = _norm_song_key(r.get("artist", ""), r.get("title", ""))
+        if not key.strip(" |"):
+            continue
+        buckets.setdefault(key, {"set_ids": set(), "rows": []})
+        buckets[key]["set_ids"].add(str(r.get("set_id", "")))
+        buckets[key]["rows"].append({
+            "id": r.get("id", ""),
+            "set_id": str(r.get("set_id", "")),
+            "artist": r.get("artist", ""),
+            "title": r.get("title", ""),
+            "diff": r.get("diff", ""),
+            "mode_name": r.get("mode_name", ""),
+            "source": r.get("source", ""),
+            "stars": r.get("stars", 0.0),
+        })
+    groups = []
+    for key, b in sorted(buckets.items()):
+        if len(b["set_ids"]) < 2:
+            continue
+        groups.append({"key": key, "rows": b["rows"]})
+    return {"group_count": len(groups), "groups": groups}
+
+
 def _reconciliation_payload() -> dict:
     """Classify every loaded row: local_played / online_only / unplayed.
 
@@ -842,6 +885,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._library()
         if path == "/api/reconciliation":
             return self._json(200, _reconciliation_payload())
+        if path == "/api/duplicates":
+            return self._json(200, _duplicates_payload())
         if path == "/api/art":
             return self._art(parsed.query)
         if path.startswith("/api/jobs/"):

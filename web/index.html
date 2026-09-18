@@ -49,6 +49,7 @@
     <p class="hint">/ search · ↑↓ move · space select · shift+click range</p>
     <h2>Counts</h2>
     <button id="reconcile-btn">reconcile played counts</button>
+    <button id="duplicates-btn">find duplicates</button>
   </aside>
 
   <main class="main">
@@ -130,7 +131,13 @@
 
 <div id="toasts" aria-live="polite"></div>
 
-<script type="module" src="/main.js?v=4"></script>
+<script type="module" src="/main.js?v=5"></script>
+
+<dialog id="duplicates-dialog" aria-labelledby="duplicates-title">
+  <h3 id="duplicates-title">Duplicate mapsets</h3>
+  <div id="duplicates-body" aria-live="polite">loading…</div>
+  <p><button id="duplicates-close">close</button></p>
+</dialog>
 
 <dialog id="shortcuts-dialog" aria-labelledby="shortcuts-title">
   <h3 id="shortcuts-title">Keyboard shortcuts</h3>
