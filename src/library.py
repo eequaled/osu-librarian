@@ -13,6 +13,16 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Beatmap:
+    # -- ID CONTRACT (see also src/export.py) --
+    # `id`      : dedupe/selection key. stable = .osu md5 (32 lower-hex) or,
+    #             when the hash is unavailable, the .osu path fallback (NOT
+    #             exportable); lazer = content md5 of the hashed blob, or the
+    #             blob path fallback when hashing fails. Never assume 32 chars.
+    # `beatmap_id`: online (website) id, int, -1/0/None = local only. Used for
+    #             online checks + text search only; never a join/export key.
+    # `set_id`  : grouping key for the carousel. stable = str(osu!.db set id)
+    #             or "local:<folder>" / "missing:<folder>"; lazer = str(set id)
+    #             or "hash:<blob12>". Opaque string: compare exactly, never int().
     id: str                      # stable: md5 | lazer: sha/md5/onlineid fallback
     set_id: str                  # grouping key
     artist: str = ""
@@ -82,6 +92,41 @@ class Filters:
     sort: str = "title"          # title|artist|creator|bpm|length|stars|rank
 
 
+# ---- PARITY CONTRACT: apply_filters <-> web/store.js visibleMaps ----
+# The JS mirror is intentional duplication (offline UI needs sync filtering).
+# Any change here MUST be mirrored in visibleMaps and vice versa. Exact
+# semantics (test agents: build the parity matrix from this list):
+# 1. text  : q = f.text.strip().lower() (py) / (f.q||"").trim().toLowerCase()
+#            (js). Empty q matches all. Else substring of search_blob, where
+#            search_blob = "artist title creator diff source tags beatmap_id"
+#            joined with single spaces, lowercased. beatmap_id via str() (py)
+#            / String(m.beatmap_id ?? "") (js); None/missing renders as
+#            "None"/"" but still searched. Case-insensitive substring
+#            (`in` / `includes`).
+# 2. played: f.played "all" = no filter (any other unknown value also passes).
+#            "played" keeps rows with b.played == (played_local or
+#            played_online) truthy (js isPlayed(m)). "unplayed" keeps rows
+#            with not played. played is derived, never stored.
+# 3. mode  : f.mode "all" = no filter. Else exact string equality
+#            b.mode_name == f.mode ("osu"|"taiko"|"catch"|"mania"). Numeric
+#            b.mode is IGNORED here. Case-sensitive.
+# 4. stars : st = b.stars or 0.0 (None/""/0 -> 0.0). Keep iff
+#            star_min <= st <= star_max (py f.star_min/f.star_max, js f.smin/
+#            f.smax, inclusive both ends). STAR-ZERO EDGE: when st == 0.0
+#            (unknown SR) the row still matches iff star_min <= 0.0, even if
+#            star_max < 0 would otherwise reject (i.e. `(st==0 and smin<=0)`
+#            rescues). NaN stars behave as reject (comparisons false, and
+#            NaN != 0.0 so no rescue).
+# 5. rank  : f.ranked "all" = no filter. Else exact string equality
+#            b.ranked == f.ranked (case-sensitive; "unknown" is a real value
+#            that only matches filter "unknown", never "all"'s opposite).
+# 6. sort  : stable ascending sort. Keys -- title:(title.lower,diff.lower),
+#            artist:(artist.lower,title.lower), creator:(creator.lower,
+#            title.lower), bpm:bpm, length:length_ms, stars:stars,
+#            rank:(not played, grade or "zz"). Unknown sort falls back to
+#            title. JS SORTERS match (localeCompare ~ lower + diffCmp tie-
+#            break; numeric subs for bpm/length/stars; rank compares
+#            isPlayed-first then grade||"zz"). Python sorted() is stable.
 def apply_filters(maps: list[Beatmap], f: Filters) -> list[Beatmap]:
     q = f.text.strip().lower()
     out = []
