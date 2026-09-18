@@ -83,7 +83,7 @@ class PersistIdentityTests(unittest.TestCase):
                         buf = io.StringIO()
                         with redirect_stderr(buf):
                             req = urllib.request.Request(
-                                f"http://127.0.0.1:{port}/api/auth/relay-return?ticket=abc123")
+                                f"http://127.0.0.1:{port}/api/auth/relay-return?ticket={'ab12cd34' * 8}")
                             try:
                                 with urllib.request.urlopen(req, timeout=10) as r:
                                     code, body = r.status, r.read()

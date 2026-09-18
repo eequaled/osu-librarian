@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import src.server as servermod  # noqa: E402
 from src.server import Handler  # noqa: E402
 
-FAKE_TICKET = "abcdef0123456789"
+FAKE_TICKET = "abcdef0123456789" * 4
 FAKE_TOKEN = {
     "access_token": "SECRET_RELAY_ACCESS_1",
     "refresh_token": "SECRET_RELAY_REFRESH_1",

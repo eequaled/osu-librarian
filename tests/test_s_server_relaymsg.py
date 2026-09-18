@@ -61,7 +61,7 @@ class RelayMsgTests(unittest.TestCase):
         return f"http://127.0.0.1:{self.port}{p}"
 
     def test_relay_return_failure_has_postmessage(self):
-        code, _, body = _req("GET", self.url("/api/auth/relay-return?ticket=abc123"))
+        code, _, body = _req("GET", self.url("/api/auth/relay-return?ticket=ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34"))
         self.assertEqual(code, 400)
         self.assertIn(SNIPPET, body.decode())
 
@@ -72,7 +72,7 @@ class RelayMsgTests(unittest.TestCase):
             with mock.patch("src.osu_api.get_me",
                             return_value={"id": 1, "username": "u"}):
                 code, _, body = _req(
-                    "GET", self.url("/api/auth/relay-return?ticket=abc123"))
+                    "GET", self.url("/api/auth/relay-return?ticket=ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34"))
         self.assertEqual(code, 200)
         self.assertIn(SNIPPET, body.decode())
 
