@@ -568,7 +568,11 @@ def run_online_check() -> tuple[str, str]:
                 job.done = d
                 job.total = t
 
-            mark_online_played(maps, int(user_id), token, progress=_prog)
+            stats = mark_online_played(maps, int(user_id), token, progress=_prog)
+            try:
+                job.meta = stats
+            except Exception:
+                pass
             _save_scan_atomic(get_mode(), keys, to_dict_list(maps), fp)
         finally:
             try:
@@ -577,6 +581,10 @@ def run_online_check() -> tuple[str, str]:
                 pass
 
     job = registry.create("online", total=1)
+    try:
+        job.meta = {}
+    except Exception:
+        pass
     registry.run_background(job, _fn)
     return job.id, ""
 
@@ -655,7 +663,16 @@ class Handler(BaseHTTPRequestHandler):
             job = registry.get(path.rsplit("/", 1)[-1])
             if job is None:
                 return self._json(404, {"error": "unknown job"})
-            return self._json(200, job.to_dict())
+            payload = job.to_dict()
+            # Workers stash extra stats (e.g. online-check counts) on job.meta;
+            # surface them here so 401/429 storms are visible while polling.
+            try:
+                meta = getattr(job, "meta", None)
+            except Exception:
+                meta = None
+            if isinstance(meta, dict):
+                payload["meta"] = meta
+            return self._json(200, payload)
         if path == "/api/auth/url":
             return self._auth_url()
         if path == "/api/auth/callback":
