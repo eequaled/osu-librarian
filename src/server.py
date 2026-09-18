@@ -346,17 +346,15 @@ def _relay_settings() -> tuple[str, int]:
 
 
 def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
-    """One-time fetch of the relay-held token. Never includes secrets in errors."""
+    """One-time fetch of the relay-held token. Never includes secrets in errors.
+
+    Token fetch contract: POST /token with JSON {"ticket": ...} first (same
+    response/semantics as GET); fall back to GET on 404/405/connection error
+    so relays that only speak GET keep working.
+    """
     base = relay_url.rstrip("/")
-    url = f"{base}/token?ticket={urllib.parse.quote(ticket, safe='')}"
-    try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            try:
-                body = json.loads(r.read().decode("utf-8") or "null")
-            except ValueError:
-                return False, "link failed: bad relay response — check your connection and retry"
-    except urllib.error.HTTPError as e:
+
+    def _drain(e) -> None:
         try:
             e.read()
         except Exception:
@@ -366,6 +364,38 @@ def _fetch_relay_token(relay_url: str, ticket: str) -> tuple[bool, dict | str]:
                 e.close()
             except Exception:
                 pass
+
+    try:
+        data = json.dumps({"ticket": ticket}).encode()
+        req = urllib.request.Request(
+            f"{base}/token", data=data,
+            headers={"Accept": "application/json",
+                     "Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            try:
+                body = json.loads(r.read().decode("utf-8") or "null")
+            except ValueError:
+                return False, "link failed: bad relay response — check your connection and retry"
+        if not isinstance(body, dict) or not body.get("access_token"):
+            return False, "link failed: link expired or already used — click the link again to get a fresh link"
+        return True, body
+    except urllib.error.HTTPError as e:
+        if getattr(e, "code", None) not in (404, 405):
+            _drain(e)
+            return False, "link failed: link expired or already used — click the link again to get a fresh link"
+        _drain(e)  # no POST route here: fall through to the GET fallback
+    except Exception:
+        pass  # connection error: fall through to the GET fallback
+    url = f"{base}/token?ticket={urllib.parse.quote(ticket, safe='')}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            try:
+                body = json.loads(r.read().decode("utf-8") or "null")
+            except ValueError:
+                return False, "link failed: bad relay response — check your connection and retry"
+    except urllib.error.HTTPError as e:
+        _drain(e)
         return False, "link failed: link expired or already used — click the link again to get a fresh link"
     except Exception:
         return False, "link failed: linking service unreachable — check your connection and retry"
