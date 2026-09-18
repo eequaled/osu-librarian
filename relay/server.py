@@ -192,16 +192,49 @@ def callback_url() -> str:
     return public_url + "/auth/callback"
 
 
+def _is_public_url_https_ok(url: str) -> bool:
+    """True for https URLs, or http loopback for local/tests.
+
+    Allows http only when the host is exactly 127.0.0.1 or localhost
+    (with any port/path). Everything else must be https.
+    """
+    if not isinstance(url, str) or not url:
+        return False
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+    try:
+        scheme = (parsed.scheme or "").lower()
+    except Exception:
+        return False
+    if scheme == "https":
+        try:
+            return bool(parsed.hostname)
+        except Exception:
+            return False
+    if scheme == "http":
+        try:
+            host = (parsed.hostname or "").lower()
+        except Exception:
+            return False
+        return host in ("127.0.0.1", "localhost")
+    return False
+
+
 def _config_error() -> str | None:
     """Human-readable misconfiguration reason, or None when configured.
 
-    Checks OSU_CLIENT_ID / OSU_CLIENT_SECRET / RELAY_PUBLIC_URL presence.
-    (HTTPS shape is checked separately.)
+    Checks OSU_CLIENT_ID / OSU_CLIENT_SECRET / RELAY_PUBLIC_URL presence
+    plus HTTPS shape of RELAY_PUBLIC_URL (http loopback allowed).
     """
     client_id, client_secret, public_url, _port = get_config()
     if not client_id or not client_secret or not public_url:
         return ("relay not configured: missing OSU_CLIENT_ID/"
                 "OSU_CLIENT_SECRET/RELAY_PUBLIC_URL")
+    if not _is_public_url_https_ok(public_url):
+        return ("relay not configured: RELAY_PUBLIC_URL must use https "
+                "(except http://127.0.0.1 and http://localhost for local use)")
     return None
 
 
@@ -513,7 +546,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_pair(self) -> None:
         self._discard_body()
-        if _config_error() is not None:
+        cfg_err = _config_error()
+        if cfg_err is not None:
+            if "https" in cfg_err.lower():
+                return self._send_json(
+                    503,
+                    {"error": "relay_not_configured: "
+                              "RELAY_PUBLIC_URL must use https"},
+                    allow_cors=True)
             return self._send_json(503, {"error": "relay_not_configured"},
                                    allow_cors=True)
         ip = _client_key(self)
