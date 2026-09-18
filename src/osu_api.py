@@ -121,12 +121,13 @@ def save_cache(path: str, data: dict) -> None:
 
 
 def _cache_hit(cache: dict, key: str, ttl_days: float) -> tuple[bool, bool]:
-    """(found_fresh, played). Plain-bool entries (pre-TTL) count as fresh."""
+    """(found_fresh, played). Legacy plain-bool entries have no timestamp, so
+    they count as expired (re-checked like everything else past its TTL)."""
     if key not in cache:
         return False, False
     v = cache[key]
     if isinstance(v, bool):
-        return True, v
+        return False, False
     if isinstance(v, dict):
         try:
             age_days = (time.time() - float(v.get("at", 0))) / 86400.0
@@ -143,8 +144,10 @@ def mark_online_played(maps: list, user_id: int, token: str,
                        progress=None) -> dict:
     """Mutate maps in place (sets played_online). Returns stats dict.
 
-    Cache values are {played, at}; entries older than ttl_days are re-checked.
-    progress, when given, is called as progress(done, total) for job reporting.
+    Cache values are {played, at} keyed by "user_id:beatmap_id"; entries older
+    than ttl_days are re-checked. Bare beatmap_id keys from older versions never
+    match the new keys, so they count as expired. progress, when given, is
+    called as progress(done, total) for job reporting.
     """
     cache = load_cache(cache_path)
     stats = {"checked": 0, "from_cache": 0, "played": 0, "errors": 0, "skipped_no_id": 0}
@@ -152,7 +155,7 @@ def mark_online_played(maps: list, user_id: int, token: str,
     stats["skipped_no_id"] = len(maps) - len(checkable)
     for i, b in enumerate(checkable):
         bid = getattr(b, "beatmap_id", -1)
-        key = str(bid)
+        key = f"{user_id}:{bid}"
         fresh, has = _cache_hit(cache, key, ttl_days)
         if fresh:
             stats["from_cache"] += 1
