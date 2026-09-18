@@ -25,7 +25,13 @@ import("./web/store.js").then(s => {
     countAll: s.countVisibleSelection([
       { type: "map", map: { id: 1 } },
       { type: "set", set: { maps: [{ id: 2 }] } }
-    ], new Set([1, 2]))
+    ], new Set([1, 2])),
+    scopeButton: s.listShortcutAllowed("BUTTON", false, false),
+    scopeDialogInput: s.listShortcutAllowed("INPUT", false, false),
+    scopeSelect: s.listShortcutAllowed("SELECT", false, false),
+    scopeList: s.listShortcutAllowed("DIV", true, false),
+    scopeBody: s.listShortcutAllowed("BODY", false, true),
+    scopeNothing: s.listShortcutAllowed("", false, false)
   };
   console.log(JSON.stringify(out));
 }).catch(e => { console.error(e); process.exit(1); });
@@ -49,6 +55,12 @@ class StoreHelperTests(unittest.TestCase):
         self.assertEqual(out["countMixed"], {"total": 4, "sel": 2})
         self.assertEqual(out["countEmpty"], {"total": 0, "sel": 0})
         self.assertEqual(out["countAll"], {"total": 2, "sel": 2})
+        self.assertFalse(out["scopeButton"])
+        self.assertFalse(out["scopeDialogInput"])
+        self.assertFalse(out["scopeSelect"])
+        self.assertTrue(out["scopeList"])
+        self.assertTrue(out["scopeBody"])
+        self.assertTrue(out["scopeNothing"])
 
 
 if __name__ == "__main__":

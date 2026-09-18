@@ -26,6 +26,15 @@ export function resolveStarRange(lo, hi, changed) {
   return [lo, hi];
 }
 
+/* Keyboard scope for the list shortcuts (arrows/space): they must only fire
+ * when #list has focus (or nothing focusable does), never when a button,
+ * dialog, or input is focused. Pure so it stays testable without DOM. */
+export function listShortcutAllowed(activeTag, focusInList, focusIsBody) {
+  if (focusInList || focusIsBody) return true;
+  if (!activeTag) return true; // nothing focused
+  return false;
+}
+
 /* Single-pass visible/selected counter for the select-all checkbox: walks rows
  * once instead of building an id list and filtering it afterwards. */
 export function countVisibleSelection(rows, selection) {

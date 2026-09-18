@@ -2,7 +2,7 @@
 import { cachedVersion, detectInstalls, library, pollJob, setMode, startOnlineCheck, startScan, status, useInstall } from "./api.js";
 import { initAuth, renderAccountChip } from "./auth.js";
 import { initBulk } from "./bulk.js";
-import { buildRows, countVisibleSelection, defaultFilters, loadPrefs, resolveStarRange, savePrefs,
+import { buildRows, countVisibleSelection, defaultFilters, listShortcutAllowed, loadPrefs, resolveStarRange, savePrefs,
          STAR_REBUILD_DEBOUNCE_MS, summarize } from "./store.js";
 import { ListView, renderDetail, renderStats, toast } from "./views.js";
 
@@ -299,13 +299,22 @@ function bindSelAll() {
 
 function bindKeyboard() {
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.activeElement === $("q")) {
+      $("q").blur();
+      return;
+    }
     if (ev.key === "/" && document.activeElement !== $("q")) {
       ev.preventDefault();
       $("q").focus();
       return;
     }
     if (!["ArrowDown", "ArrowUp", " "].includes(ev.key)) return;
-    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "")) return;
+    // List shortcuts only when #list (or nothing focusable) has focus —
+    // never when a button, dialog, select, or input is focused.
+    const ae = document.activeElement;
+    const listEl = $("list");
+    const inList = !!ae && !!listEl && (ae === listEl || listEl.contains(ae));
+    if (!listShortcutAllowed(ae?.tagName || "", inList, !ae || ae === document.body)) return;
     ev.preventDefault();
     if (ev.key === " ") {
       const row = state.rows[state.activeIdx];
