@@ -4,7 +4,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
-  font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  font-family: system-ui, -apple-system, sans-serif; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 button, select, input { background: #222a3a; color: var(--fg); border: 1px solid #444;
   border-radius: 6px; padding: 6px 10px; font-size: 14px; }
 button { cursor: pointer; }
@@ -88,8 +88,9 @@ button[aria-pressed="true"], .mode-switch button.active { background: #2c3c66; b
 .detail a { color: var(--acc); }
 
 .bulkbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px;
-  background: var(--panel); border-top: 1px solid var(--line); }
+  background: var(--panel); border-top: 1px solid var(--line); flex-wrap: wrap; }
 .bulkbar[hidden] { display: none; }
+.bulkbar > * { min-width: 0; }
 
 #toasts { position: fixed; bottom: 70px; right: 16px; display: flex; flex-direction: column; gap: 8px; }
 .toast { background: #2a3450; border: 1px solid var(--acc); border-radius: 8px;
@@ -101,6 +102,7 @@ button[aria-pressed="true"], .mode-switch button.active { background: #2c3c66; b
 dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
 dialog::backdrop { background: rgba(0,0,0,.6); }
 dialog p { line-height: 1.6; }
+#auth-dialog { width: 100%; max-width: 520px; box-sizing: border-box; }
 
 .skel { color: var(--dim); padding: 20px; }
 .empty { padding: 40px 20px; text-align: center; color: var(--dim); }
@@ -112,4 +114,8 @@ dialog p { line-height: 1.6; }
   .layout { flex-wrap: wrap; }
   .detail { flex: 1 1 100%; width: auto; border-left: none;
     border-top: 1px solid var(--line); max-height: 38vh; }
+}
+
+@media (max-width: 600px) {
+  .row .meta, .row .grade { display: none; }
 }

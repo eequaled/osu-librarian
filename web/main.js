@@ -489,19 +489,49 @@ function showSetup(installs) {
   box.hidden = false;
 }
 
+/* Pure so the empty-path rule stays testable without DOM. */
+export function setupPathError(path) {
+  if (!path || !String(path).trim()) return "paste your osu! folder path first";
+  return "";
+}
+
+function showSetupError(msg) {
+  const input = $("setup-path");
+  let err = document.getElementById("setup-path-error");
+  if (!err) {
+    err = document.createElement("span");
+    err.id = "setup-path-error";
+    err.setAttribute("role", "alert");
+    err.style.color = "#ff7a7a";
+    err.style.fontSize = "13px";
+    if (input) input.after(err);
+    else $("setup-btns")?.appendChild(err);
+  }
+  err.textContent = msg;
+  input?.focus();
+}
+
+function clearSetupError() {
+  document.getElementById("setup-path-error")?.remove();
+}
+
 async function adoptInstall(kind, path) {
-  if (!path) {
-    toast("paste your osu! folder path first", "error");
+  const err = setupPathError(path);
+  if (err) {
+    showSetupError(err);
+    toast(err, "error");
     return;
   }
   try {
     await useInstall(kind, path);
+    clearSetupError();
     state.mode = kind;
     state.paintMode();
     $("setup").hidden = true;
     toast(`using ${kind} at ${path}`);
     runScan();
   } catch (e) {
+    showSetupError(`cannot use install: ${e.message}`);
     toast(`cannot use install: ${e.message}`, "error");
   }
 }
