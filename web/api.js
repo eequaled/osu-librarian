@@ -109,6 +109,11 @@ export async function startOnlineCheck() {
   return data.job_id;
 }
 
+/** Error message for a failed export: server detail when present, else the HTTP status. */
+export function exportFailureMessage(statusCode, body) {
+  return (body && body.error) || `export ${statusCode}`;
+}
+
 /** Triggers a file download for the export endpoint. */
 export async function downloadExport(ids, format) {
   const r = await fetch("/api/export", {
@@ -116,7 +121,8 @@ export async function downloadExport(ids, format) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids, format }),
   });
-  if (!r.ok) throw new Error((await r.json()).error || `export ${r.status}`);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(exportFailureMessage(r.status, data));
   const blob = await r.blob();
   const name = (r.headers.get("Content-Disposition") || "").match(/filename="(.+?)"/)?.[1]
     || `selection.${format === "collection" ? "db" : format}`;
