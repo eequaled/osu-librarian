@@ -66,9 +66,9 @@ class CacheTests(unittest.TestCase):
 
 
 class ApiCacheTests(unittest.TestCase):
-    def test_plain_bool_counts_as_fresh(self):
-        found, played = _cache_hit({"1": True}, "1", 7.0)
-        self.assertTrue(found and played)
+    def test_plain_bool_counts_as_expired(self):
+        found, _ = _cache_hit({"1": True}, "1", 7.0)
+        self.assertFalse(found)
 
     def test_ttl_expiry(self):
         fresh_entry = {"played": True, "at": time.time()}
