@@ -137,6 +137,122 @@ def cmd_web(a) -> int:
     return 0
 
 
+def cmd_download(a) -> int:
+    import hashlib as _hashlib
+    from src.download import (build_lazer_import, load_id_file, parse_collection_db,
+                              parse_id_list, run_download)
+    md5s: list[str] = []
+    source_name: str | None = getattr(a, "name", "") or None
+    source_collections: list[dict] | None = None
+    extra_sets: list[int] = []
+    # --db (collection.db upload path)
+    if getattr(a, "db", ""):
+        try:
+            cols = parse_collection_db(a.db)
+        except (OSError, ValueError) as e:
+            print(f"error: cannot parse collection.db: {e}", file=sys.stderr)
+            return 2
+        if not cols:
+            print("error: collection.db has no collections", file=sys.stderr)
+            return 2
+        wanted = getattr(a, "collection", "") or ""
+        if wanted and wanted != "all":
+            cols = [c for c in cols if c["name"] == wanted]
+            if not cols:
+                print(f"error: collection {wanted!r} not in db", file=sys.stderr)
+                return 2
+        source_collections = cols
+        if len(cols) == 1 and not getattr(a, "name", ""):
+            source_name = cols[0]["name"]
+        for c in cols:
+            md5s.extend(m.lower() for m in c["md5s"] if m)
+    # --md5s (file or comma list)
+    if getattr(a, "md5s", ""):
+        raw = a.md5s
+        if os.path.isfile(raw):
+            with open(raw, encoding="utf-8") as f:
+                parsed = parse_id_list(f.read())
+            md5s.extend(parsed["md5s"])
+            extra_sets.extend(parsed["sets"])
+        else:
+            parsed = parse_id_list(raw.replace(",", "\n"))
+            md5s.extend(parsed["md5s"])
+            extra_sets.extend(parsed["sets"])
+    # --ids (file with urls/ids, or inline list)
+    if getattr(a, "ids", ""):
+        raw = a.ids
+        if os.path.isfile(raw):
+            parsed = load_id_file(raw)
+        else:
+            parsed = parse_id_list(raw.replace(",", "\n"))
+        md5s.extend(parsed["md5s"])
+        extra_sets.extend(parsed["sets"])
+    # --sets (comma list, set ids only)
+    if getattr(a, "sets", ""):
+        for tok in str(a.sets).replace(",", " ").split():
+            try:
+                extra_sets.append(int(tok))
+            except ValueError:
+                print(f"error: bad set id {tok!r}", file=sys.stderr)
+                return 2
+    # dedupe md5s now for the empty check (run_download dedupes again)
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for m in md5s:
+        low = m.lower()
+        if low not in seen:
+            seen.add(low)
+            uniq.append(low)
+    md5s = uniq
+    extra_sets = sorted({s for s in extra_sets if s > 0})
+    if not md5s and not extra_sets:
+        print("error: nothing to download (give --db, --md5s, --ids or --sets)",
+              file=sys.stderr)
+        return 2
+    jobs = getattr(a, "jobs", 1) or 1
+    if jobs > 2:
+        print("[warn] --jobs capped at 2 (mirror rate limits); using 2", file=sys.stderr)
+    delay = float(getattr(a, "delay", 0.5) or 0.5)
+    if delay < 0.5:
+        print("[warn] --delay raised to 0.5s (mirror rate limits)", file=sys.stderr)
+        delay = 0.5
+    out = getattr(a, "out", "") or os.path.join(os.path.expanduser("~"), "Downloads", "osu-maps")
+    # one run = one dir: <out>/<name-hash>/ unless --out already looks like a run dir
+    run_hash = _hashlib.sha1("\n".join(sorted(md5s)).encode()).hexdigest()[:8]
+    run_dir = out
+    if getattr(a, "no_run_dir", False):
+        run_dir = out
+    else:
+        # avoid double-nesting when user already passed a run dir
+        has_manifest = os.path.isfile(os.path.join(out, "mapping.json"))
+        if not has_manifest:
+            safe = "".join(c if c.isalnum() or c in ("-", "_", " ") else "_" for c in (source_name or "librarian")).strip() or "librarian"
+            run_dir = os.path.join(out, f"{safe}-{run_hash}")
+    try:
+        manifest = run_download(
+            md5s=md5s, outdir=run_dir,
+            name=getattr(a, "name", "") or None,
+            source_name=source_name,
+            source_collections=source_collections,
+            extra_sets=extra_sets,
+            only_list=bool(getattr(a, "only_list", False)),
+            lookup_delay_s=delay,
+            download_delay_s=max(1.0, delay),
+            merge=not bool(getattr(a, "keep_separate", False)),
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    print(f"run {manifest['name']}: {manifest['diff_count']} diffs -> "
+          f"{len(manifest['set_ids'])} sets (+{len(manifest['sets_extra'])} extra), "
+          f"missing={len(manifest['missing'])} -> {run_dir}")
+    print(f"collection.db + mapping.json + missing.txt written to {run_dir}")
+    if getattr(a, "lazer_import_dir", ""):
+        info = build_lazer_import(run_dir, a.lazer_import_dir)
+        print(f"lazer-import folder: {info['osz']} osz -> {info['dir']}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="osu-librarian", description="osu! stable/lazer local library manager (MVP)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -190,6 +306,22 @@ def main() -> int:
     p.add_argument("--public-only", action="store_true")
     p.add_argument("--cache", default=".api_cache.json")
     p.set_defaults(fn=cmd_check_online)
+
+    p = sub.add_parser("download", help="resolve + download .osz from collection.db / md5 / set ids (always emits collection.db)")
+    p.add_argument("--db", default="", help="stable collection.db path")
+    p.add_argument("--collection", default="", help="collection name within --db (default: all merged)")
+    p.add_argument("--md5s", default="", help="md5 list file (.txt) or comma-separated md5s")
+    p.add_argument("--ids", default="", help="id list file (.txt/.json) or pasted URLs/ids")
+    p.add_argument("--sets", default="", help="comma-separated beatmapset ids")
+    p.add_argument("--name", default="", help="run/collection name (default: source name or Librarian <date> <hash>)")
+    p.add_argument("--out", default="", help="output dir (default ~/Downloads/osu-maps); a run subdir is created")
+    p.add_argument("--no-run-dir", action="store_true", help="write directly into --out instead of a run subdir")
+    p.add_argument("--only-list", action="store_true", help="resolve + write mapping + collection.db, no bytes")
+    p.add_argument("--keep-separate", action="store_true", help="multi-collection .db -> N collections instead of merging")
+    p.add_argument("--jobs", type=int, default=1, help="lookup workers (capped at 2; sequential pacing always applies)")
+    p.add_argument("--delay", type=float, default=0.5, help="seconds between lookups (min 0.5)")
+    p.add_argument("--lazer-import-dir", default="", help="also build a fake-stable lazer import folder here")
+    p.set_defaults(fn=cmd_download)
 
     a = ap.parse_args()
     return a.fn(a)
